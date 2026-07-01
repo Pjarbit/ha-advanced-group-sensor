@@ -1,0 +1,13 @@
+{
+  "domain": "advanced_group_sensor",
+  "name": "Advanced Group Sensor",
+  "codeowners": ["@Pjarbit"],
+  "config_flow": true,
+  "dependencies": ["frontend", "websocket_api", "http"],
+  "documentation": "https://github.com/Pjarbit/ha-advanced-group-sensor",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Pjarbit/ha-advanced-group-sensor/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

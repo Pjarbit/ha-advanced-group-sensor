@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Advanced Group Sensor",
+        "description": "Create a new advanced group sensor. You can configure conditions and appearance after setup.",
+        "data": {
+          "name": "Sensor Name",
+          "friendly_sensor_name": "Friendly Display Name"
+        },
+        "data_description": {
+          "name": "Lowercase, underscores only, no spaces. This becomes your sensor entity ID.",
+          "friendly_sensor_name": "Optional — shown in dashboards instead of the sensor name."
+        }
+      }
+    },
+    "error": {
+      "already_configured": "A sensor with this name already exists.",
+      "invalid_name": "Name must contain at least one valid character (letters, numbers, underscores).",
+      "entity_already_exists": "This sensor name already exists in Home Assistant. Please choose a different name."
+    },
+    "abort": {
+      "already_configured": "This sensor is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Advanced Group Sensor Settings",
+        "description": "If the configuration panel appears blank, enable compatibility mode. Note: compatibility mode disables real-time entity updates and the native HA icon picker.\n\n⚠️ BREAKING CHANGE — Attribute mode: if you enable this, your existing dashboard cards and automations WILL BREAK. You must update them to reference the attribute instead of the sensor state directly. Use state_attr('sensor.YOUR_SENSOR_NAME', 'alert_list') in place of states('sensor.YOUR_SENSOR_NAME').",
+        "data": {
+          "compatibility_mode": "Enable compatibility mode (HTML panel)",
+          "use_attributes": "Enable attribute mode (recommended for large setups)"
+        },
+        "data_description": {
+          "compatibility_mode": "Use if your configuration panel appears blank.",
+          "use_attributes": "When enabled: sensor state becomes on/off, full alert list moves to alert_list attribute (no 255 character limit). Default is off — existing automations and cards are unaffected."
+        },
+        "submit": "Open Configuration Panel"
+      }
+    },
+    "abort": {
+      "panel_opened": "Configuration panel opened."
+    }
+  }
+}
