@@ -27,7 +27,6 @@ class AdvancedGroupSensorConfigView(HomeAssistantView):
 
     url = "/api/advanced_group_sensor/config"
     name = "api:advanced_group_sensor:config"
-    requires_auth = False
 
     async def get(self, request: web.Request) -> web.Response:
         """Return config for an entry."""
