@@ -1,5 +1,5 @@
 """Advanced Group Sensor integration."""
-# Integration version: 1.0.2
+# Integration version: 1.0.3
 import logging
 import os
 import time
@@ -58,7 +58,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     panel_path = os.path.join(os.path.dirname(__file__), PANEL_LIT_FILENAME)
     _LOGGER.info("Registering Advanced Group Sensor LitElement panel from: %s", panel_path)
 
-    if not os.path.exists(panel_path):
+    if not await hass.async_add_executor_job(os.path.exists, panel_path):
         _LOGGER.error("LitElement panel file not found at %s", panel_path)
         return False
 
@@ -69,32 +69,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Advanced Group Sensor from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
+async def async_register_ags_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register (or re-register) the panel for a given entry.
 
+    Extracted so it can be awaited synchronously from config_flow.py before
+    showing the settings form — see async_step_init in config_flow.py for
+    why (the Configure hand-off fix, same regression CN hit on HA 2026.8+).
+    """
     compatibility_mode = entry.options.get("compatibility_mode", False)
-    use_attributes = entry.options.get("use_attributes", False)
-
-    # If sensor already loaded, update use_attributes flag live
-    sensor = hass.data[DOMAIN].get(entry.entry_id)
-    if sensor and hasattr(sensor, "async_update_use_attributes"):
-        await sensor.async_update_use_attributes(use_attributes)
-
-    # Register REST API views (needed for HTML mode; idempotent)
-    if not hass.data[DOMAIN].get("_views_registered"):
-        async_register_views(hass)
-        hass.data[DOMAIN]["_views_registered"] = True
-
-    # Register websocket commands once only — avoids duplicate registration warnings on reload
-    if not hass.data[DOMAIN].get("_ws_registered"):
-        websocket_api.async_register_command(hass, websocket_get_config)
-        websocket_api.async_register_command(hass, websocket_get_states)
-        websocket_api.async_register_command(hass, websocket_save_config)
-        hass.data[DOMAIN]["_ws_registered"] = True
-
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
-
     panel_url = f"advanced-group-sensor-{entry.entry_id}"
 
     # Remove stale panel before re-registering
@@ -133,6 +115,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             },
             require_admin=True,
         )
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Advanced Group Sensor from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+
+    use_attributes = entry.options.get("use_attributes", False)
+
+    # If sensor already loaded, update use_attributes flag live
+    sensor = hass.data[DOMAIN].get(entry.entry_id)
+    if sensor and hasattr(sensor, "async_update_use_attributes"):
+        await sensor.async_update_use_attributes(use_attributes)
+
+    # Register REST API views (needed for HTML mode; idempotent)
+    if not hass.data[DOMAIN].get("_views_registered"):
+        async_register_views(hass)
+        hass.data[DOMAIN]["_views_registered"] = True
+
+    # Register websocket commands once only — avoids duplicate registration warnings on reload
+    if not hass.data[DOMAIN].get("_ws_registered"):
+        websocket_api.async_register_command(hass, websocket_get_config)
+        websocket_api.async_register_command(hass, websocket_get_states)
+        websocket_api.async_register_command(hass, websocket_save_config)
+        hass.data[DOMAIN]["_ws_registered"] = True
+
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+
+    await async_register_ags_panel(hass, entry)
 
     return True
 
@@ -215,6 +225,7 @@ async def websocket_get_states(hass, connection, msg):
     vol.Required("entry_id"): str,
     vol.Required("data"): dict,
 })
+@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_save_config(hass, connection, msg):
     """Save updated config for an entry."""
