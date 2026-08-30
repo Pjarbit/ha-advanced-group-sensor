@@ -72,25 +72,64 @@ class AdvancedGroupSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class AdvancedGroupSensorOptionsFlow(config_entries.OptionsFlow):
-    """Options flow — show compatibility toggle, save preference, open correct panel."""
+    """Options flow — show compatibility toggle, save preference, link to panel."""
 
     async def async_step_init(self, user_input=None):
-        """Show compatibility mode checkbox pre-filled from last saved preference."""
+        """Show settings form with a link to the panel.
+
+        Previously this used async_external_step() to auto-open the panel
+        via window.open(). That stops working reliably on HA Core 2026.8+
+        (confirmed via version bisection on the sibling Combined
+        Notifications integration, which shares this exact code path:
+        works on 2026.7.4, fails on 2026.8.1/8.2/8.3) — the
+        step-flow-external component renders an empty pane and never
+        navigates, with no console error. The panel itself and its auth
+        were never the problem; only the external-step hand-off was. This
+        form-based approach is the supported options-flow pattern and
+        isn't affected by that regression.
+        """
+        panel_url = f"/advanced-group-sensor-{self.config_entry.entry_id}"
+
         if user_input is not None:
             compatibility_mode = user_input.get("compatibility_mode", False)
             use_attributes = user_input.get("use_attributes", False)
-            # Save preference directly to options
+            new_options = {
+                **self.config_entry.options,
+                "compatibility_mode": compatibility_mode,
+                "use_attributes": use_attributes,
+            }
+
+            # Update options immediately (in-memory) so the panel
+            # registration below sees the NEW compatibility_mode right
+            # away — it reads self.config_entry.options directly, which
+            # wouldn't reflect this save yet if we only relied on the
+            # async_create_entry() return (HA applies that write after
+            # this step returns, not before).
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
-                options={"compatibility_mode": compatibility_mode, "use_attributes": use_attributes},
+                options=new_options,
             )
-            # Reload the entry so changes take effect immediately without HA restart
-            self.hass.async_create_task(
-                self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            )
-            # Open the correct panel
-            panel_url = f"/advanced-group-sensor-{self.config_entry.entry_id}"
-            return self.async_external_step(url=panel_url)
+
+            # Update the sensor's use_attributes flag synchronously — the
+            # background reload task that used to do this is gone (removed
+            # along with async_external_step above), so this must happen
+            # here directly or the toggle wouldn't take effect until the
+            # next full HA restart.
+            sensor = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+            if sensor and hasattr(sensor, "async_update_use_attributes"):
+                await sensor.async_update_use_attributes(use_attributes)
+
+            # Register the panel synchronously so the link in the form is
+            # always valid, whether or not this is the first save.
+            from . import async_register_ags_panel
+            await async_register_ags_panel(self.hass, self.config_entry)
+
+            # Return the SAME new_options via async_create_entry — this is
+            # what the options-flow framework actually persists as
+            # entry.options once this step returns. Passing data={} here
+            # would silently wipe the update above back to {} right after
+            # we just set it, so both writes must agree on new_options.
+            return self.async_create_entry(title="", data=new_options)
 
         current_mode = self.config_entry.options.get("compatibility_mode", False)
         current_use_attributes = self.config_entry.options.get("use_attributes", False)
@@ -103,8 +142,5 @@ class AdvancedGroupSensorOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
+            description_placeholders={"panel_url": panel_url},
         )
-
-    async def async_step_external(self, user_input=None):
-        """Handle return from external panel."""
-        return self.async_create_entry(title="", data=self.config_entry.options)
