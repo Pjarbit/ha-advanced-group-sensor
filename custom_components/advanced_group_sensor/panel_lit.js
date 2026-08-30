@@ -1,5 +1,5 @@
 /**
- * Advanced Group Sensor Panel v1.0.2
+ * Advanced Group Sensor Panel v1.0.3
  * Style injection + force visibility fix for card-mod compatibility
  */
 
@@ -42,15 +42,15 @@ if (typeof css  !== "function") css  = (strings, ...values) => {
 };
 
 try {
-  console.log('%cAdvanced Group Sensor v1.0.2 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.0.3 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
   definePanel();
-  console.log('%cAdvanced Group Sensor v1.0.2 → Successfully registered', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.0.3 → Successfully registered', 'color:#39FF14; font-weight:bold');
 } catch (e) {
   console.error('🚨 Advanced Group Sensor PANEL CRASHED during initialization:', e);
   const errorHTML = `
     <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e2535;color:#fc8181;padding:30px 40px;border-radius:16px;border:3px solid #fc8181;z-index:999999;font-family:sans-serif;max-width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.8);">
       <h2 style="margin:0 0 16px 0;color:#fc8181">Advanced Group Sensor Panel Failed to Load</h2>
-      <p style="margin:8px 0">Version 1.0.2</p>
+      <p style="margin:8px 0">Version 1.0.3</p>
       <pre style="background:#000;color:#fff;padding:12px;text-align:left;font-size:13px;overflow:auto;max-height:300px;">${e.message}\n${e.stack ? e.stack.substring(0,800) : ''}</pre>
       <button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#63b3ed;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:600">Reload Page</button>
     </div>
@@ -967,6 +967,13 @@ const DOMAIN_GROUPS = {
   "Other":      ["automation", "script", "scene", "button", "update", "number", "select", "text", "fan", "vacuum", "water_heater", "humidifier"]
 };
 
+// Domains that have an explicit named group (everything NOT in this set is treated as "Other").
+const NAMED_GROUP_DOMAINS = new Set(
+  Object.entries(DOMAIN_GROUPS)
+    .filter(([name]) => name !== "Other")
+    .flatMap(([, domains]) => domains)
+);
+
 // ---------------------------------------------------------------------------
 // Main panel element
 // ---------------------------------------------------------------------------
@@ -1003,6 +1010,7 @@ class AdvancedGroupSensorPanel extends LitElement {
     this._error = "";
     this._loading = false;
     this._expandedConditions = new Set();
+    this._groupViewFilter = {};
     this._entitySearch = {};
     this._backupMsg = "";
     this._showRenameWarning = false;
@@ -1224,7 +1232,6 @@ class AdvancedGroupSensorPanel extends LitElement {
         paused: false,
         and_conditions: [],
         entity_filter_exclude: [],
-        entity_filter_domains: [...DOMAIN_GROUPS["Other"]],
         entity_label_overrides: {},
         entity_filter_initialized: false,
       });
@@ -1410,35 +1417,42 @@ class AdvancedGroupSensorPanel extends LitElement {
     `;
   }
 
+  // Return true if a matched domain belongs to the given group.
+  // "Other" is a dynamic catch-all: any domain NOT in a named group.
+  _domainInGroup(domain, groupName) {
+    if (groupName === "Other") return !NAMED_GROUP_DOMAINS.has(domain);
+    return (DOMAIN_GROUPS[groupName] || []).includes(domain);
+  }
+
   _getMatchedGroups(condition) {
     if (!condition?.entity_filter) return [];
     const matchedDomains = new Set(this._getMatchedDomains(condition));
     if (matchedDomains.size === 0) return [];
     return Object.keys(DOMAIN_GROUPS).filter(groupName => {
-      return DOMAIN_GROUPS[groupName].some(domain => matchedDomains.has(domain));
+      return [...matchedDomains].some(domain => this._domainInGroup(domain, groupName));
     });
   }
 
-  _isGroupExcluded(condition, groupName) {
-    const excluded = new Set(condition.entity_filter_domains || []);
-    const groupDomains = DOMAIN_GROUPS[groupName] || [];
-    return groupDomains.every(d => excluded.has(d));
+  // Tapping a chip filters the VISIBLE list to that group only (view filter).
+  // Tapping the active chip again clears the filter (show all). This does NOT
+  // change what is counted or excluded — it only narrows what rows are shown.
+  // (Previously this toggled a separate entity_filter_domains list that the
+  // sensor's actual alert logic never read — meaning it looked like it
+  // excluded a whole category of entities from alerting, but silently did
+  // nothing. entity_filter_exclude, via Include All / Exclude All below, is
+  // the only list that actually controls alerting.)
+  _setGroupViewFilter(condIndex, groupName) {
+    const current = this._groupViewFilter[condIndex];
+    const next = current === groupName ? null : groupName;
+    this._groupViewFilter = { ...this._groupViewFilter, [condIndex]: next };
+    this.requestUpdate();
   }
 
-  _toggleGroup(condIndex, groupName) {
-    const conditions = [...this._config.conditions];
-    const condition = conditions[condIndex];
-    let excluded = new Set(condition.entity_filter_domains || []);
-    const groupDomains = DOMAIN_GROUPS[groupName] || [];
-    const isCurrentlyExcluded = this._isGroupExcluded(condition, groupName);
-    if (isCurrentlyExcluded) {
-      groupDomains.forEach(d => excluded.delete(d));
-    } else {
-      groupDomains.forEach(d => excluded.add(d));
-    }
-    conditions[condIndex] = { ...condition, entity_filter_domains: [...excluded] };
-    this._config = { ...this._config, conditions };
-    this.requestUpdate();
+  // Filter a matched-entity list down to the currently-selected group view (if any).
+  _applyGroupViewFilter(condIndex, matched) {
+    const groupName = this._groupViewFilter[condIndex];
+    if (!groupName) return matched;
+    return matched.filter(([id]) => this._domainInGroup(id.split(".")[0], groupName));
   }
 
   _setEntityLabel(condIndex, entityId, label) {
@@ -1742,7 +1756,7 @@ class AdvancedGroupSensorPanel extends LitElement {
           </div>
 
           <div class="dialog-footer">
-            <span class="version-stamp">pja v1.0.2</span>
+            <span class="version-stamp">pja v1.0.3</span>
             ${this._error ? html`<span class="error-msg">${this._error}</span>` : ""}
             ${this._saved ? html`<span class="saved-msg">✓ Saved</span>` : ""}
             <div class="footer-buttons">
@@ -2149,7 +2163,7 @@ class AdvancedGroupSensorPanel extends LitElement {
     const isOpen = this._expandedConditions.has(index);
     const isPaused = condition.paused || false;
     const allMatched = this._matchedEntities(condition);
-    const visible = this._visibleEntities(condition);
+    const visibleList = this._applyGroupViewFilter(index, allMatched);
     const excluded = new Set(condition.entity_filter_exclude || []);
     const activeCount = allMatched.filter(([id]) => !excluded.has(id)).length;
     const sub = condition.entity_filter
@@ -2201,24 +2215,14 @@ class AdvancedGroupSensorPanel extends LitElement {
 
             ${condition.entity_filter ? html`
               <div class="domain-filter">
-                <div class="domain-filter-label">Include entity types:</div>
+                <div class="domain-filter-label">Show only:</div>
                 <div class="domain-chips">
                   ${this._getMatchedGroups(condition).map(groupName => {
-                    const isExcluded = this._isGroupExcluded(condition, groupName);
-                    const groupDomains = DOMAIN_GROUPS[groupName] || [];
-                    const excludeList = new Set(condition.entity_filter_exclude || []);
-                    const keyword = (condition.entity_filter || "").toLowerCase();
-                    const hasIncluded = isExcluded && this._allEntityList
-                      .filter(([id, s]) => {
-                        const fn = (s.friendly_name || "").toLowerCase();
-                        return id.toLowerCase().includes(keyword) || fn.includes(keyword);
-                      })
-                      .some(([id]) => groupDomains.includes(id.split(".")[0]) && !excludeList.has(id));
-                    const chipClass = !isExcluded ? "included" : "excluded";
-                    const chipStyle = (!isExcluded) ? "" : hasIncluded ? "animation: chip-pulse 2s ease-in-out infinite;" : "";
+                    const isActive = this._groupViewFilter[index] === groupName;
+                    const chipClass = isActive ? "included" : "excluded";
                     return html`
-                      <div class="domain-chip ${chipClass}" style="${chipStyle}"
-                        @click="${() => this._toggleGroup(index, groupName)}">
+                      <div class="domain-chip ${chipClass}"
+                        @click="${() => this._setGroupViewFilter(index, groupName)}">
                         ${groupName}
                       </div>
                     `;
@@ -2244,11 +2248,11 @@ class AdvancedGroupSensorPanel extends LitElement {
                   <span class="entity-list-title">Matching entities in your system</span>
                   <div style="display:flex;align-items:center;gap:8px">
                     <span class="match-count">${activeCount} / ${allMatched.length} included</span>
-                    <button class="list-action-btn include-all-btn" @click="${() => this._includeFromList(index, visible)}">Include All</button>
-                    <button class="list-action-btn exclude-all-btn" @click="${() => this._excludeFromList(index, visible)}">Exclude All</button>
+                    <button class="list-action-btn include-all-btn" @click="${() => this._includeFromList(index, visibleList)}">Include All</button>
+                    <button class="list-action-btn exclude-all-btn" @click="${() => this._excludeFromList(index, visibleList)}">Exclude All</button>
                   </div>
                 </div>
-                ${visible.map(([entityId, state]) => {
+                ${visibleList.map(([entityId, state]) => {
                   const overrides = condition.entity_label_overrides || {};
                   const customLabel = overrides[entityId] || "";
                   return html`
