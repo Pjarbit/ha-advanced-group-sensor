@@ -1,14 +1,14 @@
 /**
- * Advanced Group Sensor Panel v1.0.2
+ * Advanced Group Sensor Panel v1.0.3
  * Vanilla JS — iframe REST API approach
- * pja 1.0.2
+ * pja 1.0.3
  */
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 
 const COLORS = [
   { label: "Use YOUR Current Theme Color", value: "Use YOUR Current Theme Color", css: "var(--primary-background-color)" },
@@ -44,6 +44,31 @@ const DOMAIN_GROUPS = {
   "Alarms":   ["alarm_control_panel"],
   "Other":    ["automation", "script", "scene", "button", "update", "number", "select", "text", "fan", "vacuum", "water_heater", "humidifier"]
 };
+
+// Domains that have an explicit named group (everything NOT in this set is treated as "Other").
+const NAMED_GROUP_DOMAINS = new Set(
+  Object.entries(DOMAIN_GROUPS)
+    .filter(([name]) => name !== "Other")
+    .flatMap(([, domains]) => domains)
+);
+
+// True if a domain belongs to the given group. "Other" is a dynamic catch-all.
+function domainInGroup(domain, groupName) {
+  if (groupName === "Other") return !NAMED_GROUP_DOMAINS.has(domain);
+  return (DOMAIN_GROUPS[groupName] || []).includes(domain);
+}
+
+// Filter a matched-entity list to the active view-filter group (if any).
+// (Tapping a chip only narrows what's SHOWN — it does not exclude anything
+// from alerting. Only entity_filter_exclude, via Include All / Exclude All,
+// controls that. Previously this codebase toggled a separate
+// entity_filter_domains list that looked like a real exclusion control but
+// the sensor's alert logic never read it, so it silently did nothing.)
+function applyGroupViewFilter(index, matched) {
+  const groupName = _groupViewFilter[index];
+  if (!groupName) return matched;
+  return matched.filter(([id]) => domainInGroup(id.split(".")[0], groupName));
+}
 const ICON_GROUPS = {
   "All Clear": [
     "mdi:hand-okay", "mdi:check-circle", "mdi:check-all", "mdi:bell-off",
@@ -137,6 +162,7 @@ let _allEntityList = [];
 let _activeTab = "general";
 let _expandedConditions = new Set();
 let _entitySearch = {};
+let _groupViewFilter = {};
 let _backupMsg = "";
 let _saving = false;
 let _saved = false;
@@ -152,6 +178,22 @@ let _entryId = "";
 // ---------------------------------------------------------------------------
 
 function getToken() {
+  // Prefer the live token from the parent HA frontend's own hass object
+  // (works whenever the panel is same-origin with the parent — the most
+  // common case) since it's never stale and doesn't depend on whether
+  // localStorage happens to have a snapshot written to it.
+  try {
+    const parentToken = window.parent?.hass?.auth?.data?.access_token;
+    if (parentToken) return parentToken;
+  } catch (e) {
+    // Cross-origin access to window.parent throws — fall through to localStorage.
+  }
+
+  // Fallback: the token HA's own frontend stores for a logged-in session.
+  // Only present if this browser has actually logged into HA directly at
+  // some point (not guaranteed for companion-app WebViews, some reverse
+  // proxies, or storage-partitioned iframes) — and can go stale after the
+  // access token's ~30 minute lifetime with no refresh here.
   try {
     const raw = localStorage.getItem("hassTokens");
     if (!raw) return "";
@@ -452,7 +494,7 @@ function buildPanel() {
     </div>
 
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;">
-      <span style="font-size:0.65rem;color:#64748b;font-family:monospace;margin-right:auto;">pja 1.0.2</span>
+      <span style="font-size:0.65rem;color:#64748b;font-family:monospace;margin-right:auto;">pja 1.0.3</span>
       ${_error ? `<span style="font-size:0.82rem;color:#fc8181;flex:1;">${esc(_error)}</span>` : ""}
       ${_saved ? `<span style="font-size:0.82rem;color:#68d391;">✓ Saved — this window can safely be closed.</span>` : ""}
       <div style="display:flex;gap:10px;">
@@ -760,7 +802,7 @@ function buildSmartGroupCard(condition, index) {
 
   const matchedDomains = new Set();
   allMatched.forEach(([id]) => matchedDomains.add(id.split(".")[0]));
-  const matchedGroupNames = Object.keys(DOMAIN_GROUPS).filter(g => DOMAIN_GROUPS[g].some(d => matchedDomains.has(d)));
+  const matchedGroupNames = Object.keys(DOMAIN_GROUPS).filter(g => [...matchedDomains].some(d => domainInGroup(d, g)));
 
   // Check if any entity in group is alerting
   const isGroupAlert = !isPaused && allMatched.some(([id]) => {
@@ -795,21 +837,17 @@ function buildSmartGroupCard(condition, index) {
           ${buildField("Custom Group Name <span style='font-size:0.78rem;font-weight:400;color:#64748b;'>(optional)</span>", `<input class="sg-name" data-index="${index}" type="text" value="${esc(condition.entity_filter_name || "")}" placeholder="e.g. Doors Open" style="${inputStyle()}">`)}
           ${condition.entity_filter && matchedGroupNames.length > 0 ? `
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <div style="font-size:0.82rem;color:#94a3b8;">Include entity types:</div>
+              <div style="font-size:0.82rem;color:#94a3b8;">Show only:</div>
               <div style="display:flex;flex-wrap:wrap;gap:6px;">
                 ${matchedGroupNames.map(gn => {
-                  const groupDomains = DOMAIN_GROUPS[gn] || [];
-                  const isExcluded = groupDomains.every(d => (condition.entity_filter_domains || []).includes(d));
-                  return `<div class="domain-chip" data-index="${index}" data-group="${gn}" style="padding:3px 10px;border-radius:20px;font-size:0.75rem;font-family:monospace;cursor:pointer;border:1px solid ${isExcluded ? "rgba(246,173,85,0.2)" : "rgba(47,207,118,0.3)"};background:${isExcluded ? "rgba(246,173,85,0.08)" : "rgba(47,207,118,0.1)"};color:${isExcluded ? "#f6ad55" : "rgb(47,207,118)"};">${gn}</div>`;
+                  const isActive = _groupViewFilter[index] === gn;
+                  return `<div class="domain-chip" data-index="${index}" data-group="${gn}" style="padding:3px 10px;border-radius:20px;font-size:0.75rem;font-family:monospace;cursor:pointer;border:1px solid ${isActive ? "rgba(47,207,118,0.3)" : "rgba(246,173,85,0.2)"};background:${isActive ? "rgba(47,207,118,0.1)" : "rgba(246,173,85,0.08)"};color:${isActive ? "rgb(47,207,118)" : "#f6ad55"};">${gn}</div>`;
                 }).join("")}
               </div>
             </div>
           ` : ""}
           ${condition.entity_filter ? `<div style="font-size:0.82rem;color:rgba(255,215,1,0.6);font-style:italic;padding:8px 12px;border:1px solid rgba(255,215,0,0.2);border-radius:8px;">⚠ All entities in this group must share the same alert value.</div>` : ""}
-          ${condition.entity_filter ? buildEntityList(condition, index, allMatched.filter(([id]) => {
-            const excludedDomains = new Set(condition.entity_filter_domains || []);
-            return excludedDomains.size === 0 || !excludedDomains.has(id.split(".")[0]);
-          }), excl) : ""}
+          ${condition.entity_filter ? buildEntityList(condition, index, applyGroupViewFilter(index, allMatched), excl) : ""}
           ${buildField("Attribute <span style='font-size:0.78rem;font-weight:400;color:#64748b;'>(optional)</span>", `<input class="sg-attr" data-index="${index}" type="text" value="${esc(condition.attribute || "")}" placeholder="Leave empty to use main state" style="${inputStyle()}">`)}
           <div style="display:flex;gap:8px;align-items:flex-end;">
             <div style="display:flex;flex-direction:column;gap:5px;">
@@ -1042,7 +1080,7 @@ function attachEvents() {
   if (addGroup) addGroup.addEventListener("click", () => {
     const conditions = [..._config.conditions];
     const newIndex = conditions.length;
-    conditions.push({ entity_filter: "", entity_filter_name: "", operator: "equals", trigger_value: "", paused: false, and_conditions: [], entity_filter_exclude: [], entity_filter_domains: [...DOMAIN_GROUPS["Other"]], entity_label_overrides: {}, entity_filter_initialized: false });
+    conditions.push({ entity_filter: "", entity_filter_name: "", operator: "equals", trigger_value: "", paused: false, and_conditions: [], entity_filter_exclude: [], entity_label_overrides: {}, entity_filter_initialized: false });
     _config = { ..._config, conditions };
     _expandedConditions.add(newIndex);
     _activeTab = "smartgroups";
@@ -1124,15 +1162,8 @@ function attachEvents() {
     chip.addEventListener("click", () => {
       const condIndex = parseInt(chip.dataset.index);
       const groupName = chip.dataset.group;
-      const conditions = [..._config.conditions];
-      const condition = conditions[condIndex];
-      let excl = new Set(condition.entity_filter_domains || []);
-      const groupDomains = DOMAIN_GROUPS[groupName] || [];
-      const isExcluded = groupDomains.every(d => excl.has(d));
-      if (isExcluded) groupDomains.forEach(d => excl.delete(d));
-      else groupDomains.forEach(d => excl.add(d));
-      conditions[condIndex] = { ...condition, entity_filter_domains: [...excl] };
-      _config = { ..._config, conditions };
+      // View filter: show only this group, or clear if tapping the active one.
+      _groupViewFilter[condIndex] = _groupViewFilter[condIndex] === groupName ? undefined : groupName;
       render();
     });
   });
@@ -1426,7 +1457,7 @@ async function importBackup(e) {
 // Init
 // ---------------------------------------------------------------------------
 
-console.log('%cAdvanced Group Sensor v1.0.2 — Vanilla JS panel initializing', 'color:#39FF14; font-weight:bold');
+console.log('%cAdvanced Group Sensor v1.0.3 — Vanilla JS panel initializing', 'color:#39FF14; font-weight:bold');
 
 const params = new URLSearchParams(window.location.search);
 _entryId = params.get("entry_id") || "";
