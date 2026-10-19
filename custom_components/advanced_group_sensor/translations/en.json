@@ -27,7 +27,7 @@
     "step": {
       "init": {
         "title": "Advanced Group Sensor Settings",
-        "description": "**[Open configuration panel]({panel_url})**\n\nUse the link above to open the full configuration panel (colors, icons, conditions, etc).\n\n⚠️ BREAKING CHANGE — Attribute mode: if you enable this, your existing dashboard cards and automations WILL BREAK. You must update them to reference the attribute instead of the sensor state directly. Use state_attr('sensor.YOUR_SENSOR_NAME', 'alert_list') in place of states('sensor.YOUR_SENSOR_NAME').",
+        "description": "**[Open configuration panel]({panel_url})**\n\nUse the link above to open the full configuration panel (colors, icons, conditions, etc).\n\n**TO MAKE YOUR CARDS WORK WITH THE ATTRIBUTE OPTION YOU NEED TO CHANGE:**\n\n**states('sensor.YOUR_SENSOR_NAME')** → **state_attr('sensor.YOUR_SENSOR_NAME', 'alert_list')**\n\nThe sensor state will now be on or off, and the full alert list moves into the alert_list attribute (no 255-character limit). Recommended for large setups.",
         "data": {
           "use_attributes": "Enable attribute mode (recommended for large setups)"
         },
