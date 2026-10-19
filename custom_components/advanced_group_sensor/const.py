@@ -2,6 +2,17 @@
 
 DOMAIN = "advanced_group_sensor"
 
+# Entity domains the panel can display and the sensor may monitor.
+# Single source of truth — imported wherever this set is needed.
+RELEVANT_DOMAINS = {
+    "sensor", "binary_sensor", "input_boolean", "switch", "light", "lock",
+    "cover", "climate", "person", "device_tracker", "media_player",
+    "camera", "automation", "script", "scene", "button", "update",
+    "number", "select", "input_number", "input_select", "input_text",
+    "counter", "timer", "input_datetime", "valve",
+    "alarm_control_panel", "fan", "vacuum", "water_heater", "humidifier",
+}
+
 # Color options
 COLORS = [
     "Use YOUR Current Theme Color", "Red", "Green", "Bright Green", "Blue",

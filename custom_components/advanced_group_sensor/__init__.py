@@ -1,5 +1,5 @@
 """Advanced Group Sensor integration."""
-# Integration version: 1.0.3
+# Integration version: 1.0.4
 import logging
 import os
 import time
@@ -8,8 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import StaticPathConfig
 import voluptuous as vol
-from .const import DOMAIN, COLOR_MAP
-from .panel_api import async_register_views
+from .const import DOMAIN, COLOR_MAP, RELEVANT_DOMAINS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,45 +75,29 @@ async def async_register_ags_panel(hass: HomeAssistant, entry: ConfigEntry) -> N
     showing the settings form — see async_step_init in config_flow.py for
     why (the Configure hand-off fix, same regression CN hit on HA 2026.8+).
     """
-    compatibility_mode = entry.options.get("compatibility_mode", False)
     panel_url = f"advanced-group-sensor-{entry.entry_id}"
 
     # Remove stale panel before re-registering
-    try:
-        frontend.async_remove_panel(hass, panel_url)
-    except Exception as err:
-        _LOGGER.debug("Panel %s not removed (may not have been registered): %s", panel_url, err)
+    frontend.async_remove_panel(hass, panel_url, warn_if_unknown=False)
 
-    if compatibility_mode:
-        _LOGGER.info("Advanced Group Sensor: using HTML compatibility panel for entry %s", entry.entry_id)
-        frontend.async_register_built_in_panel(
-            hass,
-            component_name="iframe",
-            sidebar_title=None,
-            sidebar_icon=None,
-            frontend_url_path=panel_url,
-            config={"url": f"/api/advanced_group_sensor/panel?entry_id={entry.entry_id}&v={PANEL_TIMESTAMP}"},
-            require_admin=True,
-        )
-    else:
-        _LOGGER.info("Advanced Group Sensor: using LitElement panel for entry %s", entry.entry_id)
-        frontend.async_register_built_in_panel(
-            hass,
-            component_name="custom",
-            sidebar_title=None,
-            sidebar_icon=None,
-            frontend_url_path=panel_url,
-            config={
-                "_panel_custom": {
-                    "name": "advanced-group-sensor-panel",
-                    "js_url": PANEL_LIT_URL + f".js?v={PANEL_TIMESTAMP}",
-                    "embed_iframe": False,
-                    "trust_external_script": False,
-                    "config": {"entry_id": entry.entry_id},
-                }
-            },
-            require_admin=True,
-        )
+    _LOGGER.info("Advanced Group Sensor: registering LitElement panel for entry %s", entry.entry_id)
+    frontend.async_register_built_in_panel(
+        hass,
+        component_name="custom",
+        sidebar_title=None,
+        sidebar_icon=None,
+        frontend_url_path=panel_url,
+        config={
+            "_panel_custom": {
+                "name": "advanced-group-sensor-panel",
+                "js_url": PANEL_LIT_URL + f".js?v={PANEL_TIMESTAMP}",
+                "embed_iframe": False,
+                "trust_external_script": False,
+                "config": {"entry_id": entry.entry_id},
+            }
+        },
+        require_admin=True,
+    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -127,11 +110,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sensor = hass.data[DOMAIN].get(entry.entry_id)
     if sensor and hasattr(sensor, "async_update_use_attributes"):
         await sensor.async_update_use_attributes(use_attributes)
-
-    # Register REST API views (needed for HTML mode; idempotent)
-    if not hass.data[DOMAIN].get("_views_registered"):
-        async_register_views(hass)
-        hass.data[DOMAIN]["_views_registered"] = True
 
     # Register websocket commands once only — avoids duplicate registration warnings on reload
     if not hass.data[DOMAIN].get("_ws_registered"):
@@ -149,7 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    frontend.async_remove_panel(hass, f"advanced-group-sensor-{entry.entry_id}")
+    frontend.async_remove_panel(hass, f"advanced-group-sensor-{entry.entry_id}", warn_if_unknown=False)
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
@@ -169,12 +147,13 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     vol.Required("type"): "advanced_group_sensor/get_config",
     vol.Required("entry_id"): str,
 })
+@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_get_config(hass, connection, msg):
     """Return the current config for an entry. States loaded later."""
     entry_id = msg["entry_id"]
     entry = hass.config_entries.async_get_entry(entry_id)
-    if not entry:
+    if not entry or entry.domain != DOMAIN:
         connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 
@@ -189,23 +168,15 @@ async def websocket_get_config(hass, connection, msg):
     vol.Required("type"): "advanced_group_sensor/get_states",
     vol.Required("entry_id"): str,
 })
+@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_get_states(hass, connection, msg):
     """Return entity states - called by the panel after it loads."""
     entry_id = msg["entry_id"]
     entry = hass.config_entries.async_get_entry(entry_id)
-    if not entry:
+    if not entry or entry.domain != DOMAIN:
         connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
-
-    RELEVANT_DOMAINS = {
-        "sensor", "binary_sensor", "input_boolean", "switch", "light", "lock",
-        "cover", "climate", "person", "device_tracker", "media_player",
-        "camera", "automation", "script", "scene", "button", "update",
-        "number", "select", "input_number", "input_select", "input_text",
-        "counter", "timer", "input_datetime", "valve",
-        "alarm_control_panel", "fan", "vacuum", "water_heater", "humidifier",
-    }
 
     states = {
         state.entity_id: {
@@ -231,7 +202,7 @@ async def websocket_save_config(hass, connection, msg):
     """Save updated config for an entry."""
     entry_id = msg["entry_id"]
     entry = hass.config_entries.async_get_entry(entry_id)
-    if not entry:
+    if not entry or entry.domain != DOMAIN:
         connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 

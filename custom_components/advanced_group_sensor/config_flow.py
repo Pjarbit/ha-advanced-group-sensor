@@ -72,7 +72,7 @@ class AdvancedGroupSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class AdvancedGroupSensorOptionsFlow(config_entries.OptionsFlow):
-    """Options flow — show compatibility toggle, save preference, link to panel."""
+    """Options flow — save preferences and link to the configuration panel."""
 
     async def async_step_init(self, user_input=None):
         """Show settings form with a link to the panel.
@@ -91,20 +91,18 @@ class AdvancedGroupSensorOptionsFlow(config_entries.OptionsFlow):
         panel_url = f"/advanced-group-sensor-{self.config_entry.entry_id}"
 
         if user_input is not None:
-            compatibility_mode = user_input.get("compatibility_mode", False)
             use_attributes = user_input.get("use_attributes", False)
             new_options = {
                 **self.config_entry.options,
-                "compatibility_mode": compatibility_mode,
                 "use_attributes": use_attributes,
             }
 
             # Update options immediately (in-memory) so the panel
-            # registration below sees the NEW compatibility_mode right
-            # away — it reads self.config_entry.options directly, which
-            # wouldn't reflect this save yet if we only relied on the
-            # async_create_entry() return (HA applies that write after
-            # this step returns, not before).
+            # registration below sees the new values right away — it reads
+            # self.config_entry.options directly, which wouldn't reflect
+            # this save yet if we only relied on the async_create_entry()
+            # return (HA applies that write after this step returns, not
+            # before).
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 options=new_options,
@@ -131,11 +129,9 @@ class AdvancedGroupSensorOptionsFlow(config_entries.OptionsFlow):
             # we just set it, so both writes must agree on new_options.
             return self.async_create_entry(title="", data=new_options)
 
-        current_mode = self.config_entry.options.get("compatibility_mode", False)
         current_use_attributes = self.config_entry.options.get("use_attributes", False)
 
         schema = vol.Schema({
-            vol.Required("compatibility_mode", default=current_mode): bool,
             vol.Required("use_attributes", default=current_use_attributes): bool,
         })
 
