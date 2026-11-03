@@ -6,6 +6,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 from .import_helpers import build_entry_data, build_options, clean_name
+from .tasks import normalize_tasks
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ class AdvancedGroupSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_import(self, import_data):
-        """Create one sensor from imported data (Import from Combined Notifications)."""
+        """Create one sensor from imported data (Import from Combined Notifications, Duplicate)."""
         name = clean_name(import_data.get("name"))
         error = name_error(self.hass, name)
         if error:
@@ -102,9 +103,14 @@ class AdvancedGroupSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason=error)
 
         friendly = str(import_data.get("friendly_sensor_name") or "").strip()
+        data = build_entry_data(import_data.get("config") or {}, name, friendly)
+        # Duplicate copies Task Trackers too (Combined Notifications has none).
+        tasks = normalize_tasks((import_data.get("config") or {}).get("tasks") or [])
+        if tasks:
+            data["tasks"] = tasks
         return self.async_create_entry(
             title=friendly or name,
-            data=build_entry_data(import_data.get("config") or {}, name, friendly),
+            data=data,
             options=build_options(import_data.get("options") or {}),
         )
 

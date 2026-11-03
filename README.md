@@ -38,7 +38,7 @@ Birthday tip: make two yearly tasks with the same date. `Send Mom a Card` with 7
 
 ## Duplicate Sensor (new in 1.1.0)
 
-In a sensor's panel, **⧉ Duplicate Sensor** (Backup & Restore) asks for a new name and creates a copy of the last saved version: conditions, colors, icons, labels and attribute mode. Task Trackers are not copied. The button is greyed out until the sensor has been saved with at least one condition.
+In a sensor's panel, **⧉ Duplicate Sensor** (Backup & Restore) asks for a new name and creates a copy of the last saved version: conditions, colors, icons, labels, attribute mode and Task Trackers. Copied tasks start with no Done history, and because task button and countdown entity IDs come from the task name, the copy's get a `_2` suffix (for example `button.call_mom_done_2`). The button is greyed out until the sensor has been saved with at least one condition.
 
 ## Moving from Combined Notifications (new in 1.1.0)
 
