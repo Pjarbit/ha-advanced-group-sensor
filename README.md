@@ -553,14 +553,13 @@ hold_action:
 
 ---
 
-### 3. Advanced — Card with Integration Colors with card-mod and advanced styling
+### 3. Advanced — Arbit Glass Card
 
-![All Clear](media/card_all_clear.png)
-![Alert](media/card_alert.png)
+<!-- Screenshots of this card (all clear and alert) will be added in the formal release. -->
 
-This is the version I use. Requires [button-card](https://github.com/custom-cards/button-card) and [card-mod](https://github.com/thomasloven/lovelace-card-mod). The card-mod section adds a light reflection effect for a polished appearance.
+This is the version I use: a glass look with a dark blue-gray all-clear state and a deep red gradient when alerting. Requires only [button-card](https://github.com/custom-cards/button-card), no card-mod.
 
-Only one line needs to change — replace `sensor.YOUR_SENSOR_NAME` with your sensor. Paste into a Manual card in your dashboard.
+The alert text and icon colors come from your sensor's settings; the all-clear text and icon are green (`#40CF8A`). Only one line needs to change — replace `sensor.YOUR_SENSOR_NAME` with your sensor. Paste into a Manual card in your dashboard.
 
 ```yaml
 type: custom:button-card
@@ -571,29 +570,40 @@ show_icon: true
 show_state: false
 styles:
   card:
-    - background-color: >
-        [[[ if (!entity.attributes.is_clear) { return
-        entity.attributes.color_alert; } else { return
-        entity.attributes.color_clear; } ]]]
-    - border-radius: 16px !important
+    - background: >
+        [[[ if (!entity.attributes.is_clear) { return 'linear-gradient(90deg,
+        #BE1717 0%, #B01616 2%, #AB1313 3%, #A61212 5%, #A01111 8%, #9B1010 12%,
+        #971010 16%, #921212 20%, #8E1010 25%, #8C1010 30%, #891010 35%, #881010
+        40%, #840F0F 50%, #840F0F 60%, #861010 65%, #881010 70%, #8A1010 75%,
+        #901010 80%, #971010 84%, #9F1111 88%, #A81212 92%, #AF1212 95%, #B61212
+        97%, #B91313 98%, #C41414 100%)'; } else { return
+        'linear-gradient(180deg, #293A48, #15232F)'; } ]]]
+    - border-radius: 12px !important
     - box-shadow: >
-        12px 12px 24px rgba(0, 0, 0, 0.5), -4px -4px 8px rgba(255, 255, 255,
-        0.1), inset -4px -4px 8px rgba(0, 0, 0, 0.2), inset 4px 4px 8px
-        rgba(255, 255, 255, 0.2) !important
+        [[[ if (!entity.attributes.is_clear) { return '0 3px 6px 0 rgba(0, 0, 0,
+        0.60), inset 0 -3px 5px -1px rgba(35, 0, 0, 0.60), inset 0 -12px 16px
+        -8px rgba(130, 15, 15, 0.40), inset 3px 0 4px -2px rgba(255, 165, 165,
+        0.70), inset 0 3px 4px -1px rgba(255, 175, 175, 0.75) !important'; } else
+        { return '0 0 8px 1px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(110, 150,
+        180, 0.30), inset 0 0 14px rgba(110, 160, 195, 0.22), inset 0 2px 0
+        rgba(150, 190, 220, 0.30), inset 0 -2px 0 rgba(0, 0, 0, 0.35)
+        !important'; } ]]]
     - overflow: hidden !important
     - padding: 6px 10px 10px 10px !important
     - color: >
         [[[ if (!entity.attributes.is_clear) { return
-        entity.attributes.text_color_alert; } else { return
-        entity.attributes.text_color_clear; } ]]]
+        entity.attributes.text_color_alert; } else { return '#40CF8A'; } ]]]
     - white-space: normal
     - position: relative !important
-    - font-size: 20px
+    - font-size: 14px
   name:
     - font-weight: bold
     - text-align: center
-    - font-size: 23px
+    - font-size: 21px
     - margin-top: 0
+    - filter: >-
+        drop-shadow(-2px -2px 0 rgba(0, 0, 0, 0.65)) drop-shadow(2px 2px 0
+        rgba(255, 255, 255, 0.15))
   label:
     - white-space: normal
     - display: block
@@ -603,11 +613,13 @@ styles:
   icon:
     - color: >
         [[[ if (!entity.attributes.is_clear) { return
-        entity.attributes.icon_color_alert; } else { return
-        entity.attributes.icon_color_clear; } ]]]
-    - width: 70px
-    - height: 70px
+        entity.attributes.icon_color_alert; } else { return '#40CF8A'; } ]]]
+    - width: 50px
+    - height: 50px
     - margin: 5px 0
+    - filter: >-
+        drop-shadow(-2px -2px 0 rgba(0, 0, 0, 0.65)) drop-shadow(2px 2px 0
+        rgba(255, 255, 255, 0.35))
 icon: >
   [[[ if (!entity.attributes.is_clear) { return entity.attributes.icon_alert; }
   else { return entity.attributes.icon_clear; } ]]]
@@ -619,24 +631,6 @@ tap_action:
   action: none
 hold_action:
   action: none
-card_mod:
-  style: |
-    ha-card::after {
-      content: '' !important;
-      position: absolute !important;
-      width: 100px !important;
-      height: 100% !important;
-      background: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0) 0%,
-        rgba(255, 255, 255, 0.15) 50%,
-        rgba(255, 255, 255, 0) 100%
-      ) !important;
-      transform: skewX(-15deg) translateX(50px) !important;
-      top: 0 !important;
-      left: -20px !important;
-      z-index: 1 !important;
-    }
 ```
 
 ---
@@ -855,7 +849,7 @@ hold_action:
 
 ---
 
-### Card 3 — Advanced Integration Colors with card-mod (Attribute Mode)
+### Card 3 — Advanced Arbit Glass Card (Attribute Mode)
 
 ```yaml
 type: custom:button-card
@@ -866,29 +860,40 @@ show_icon: true
 show_state: false
 styles:
   card:
-    - background-color: >
-        [[[ if (!entity.attributes.is_clear) { return
-        entity.attributes.color_alert; } else { return
-        entity.attributes.color_clear; } ]]]
-    - border-radius: 16px !important
+    - background: >
+        [[[ if (!entity.attributes.is_clear) { return 'linear-gradient(90deg,
+        #BE1717 0%, #B01616 2%, #AB1313 3%, #A61212 5%, #A01111 8%, #9B1010 12%,
+        #971010 16%, #921212 20%, #8E1010 25%, #8C1010 30%, #891010 35%, #881010
+        40%, #840F0F 50%, #840F0F 60%, #861010 65%, #881010 70%, #8A1010 75%,
+        #901010 80%, #971010 84%, #9F1111 88%, #A81212 92%, #AF1212 95%, #B61212
+        97%, #B91313 98%, #C41414 100%)'; } else { return
+        'linear-gradient(180deg, #293A48, #15232F)'; } ]]]
+    - border-radius: 12px !important
     - box-shadow: >
-        12px 12px 24px rgba(0, 0, 0, 0.5), -4px -4px 8px rgba(255, 255, 255,
-        0.1), inset -4px -4px 8px rgba(0, 0, 0, 0.2), inset 4px 4px 8px
-        rgba(255, 255, 255, 0.2) !important
+        [[[ if (!entity.attributes.is_clear) { return '0 3px 6px 0 rgba(0, 0, 0,
+        0.60), inset 0 -3px 5px -1px rgba(35, 0, 0, 0.60), inset 0 -12px 16px
+        -8px rgba(130, 15, 15, 0.40), inset 3px 0 4px -2px rgba(255, 165, 165,
+        0.70), inset 0 3px 4px -1px rgba(255, 175, 175, 0.75) !important'; } else
+        { return '0 0 8px 1px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(110, 150,
+        180, 0.30), inset 0 0 14px rgba(110, 160, 195, 0.22), inset 0 2px 0
+        rgba(150, 190, 220, 0.30), inset 0 -2px 0 rgba(0, 0, 0, 0.35)
+        !important'; } ]]]
     - overflow: hidden !important
     - padding: 6px 10px 10px 10px !important
     - color: >
         [[[ if (!entity.attributes.is_clear) { return
-        entity.attributes.text_color_alert; } else { return
-        entity.attributes.text_color_clear; } ]]]
+        entity.attributes.text_color_alert; } else { return '#40CF8A'; } ]]]
     - white-space: normal
     - position: relative !important
-    - font-size: 20px
+    - font-size: 14px
   name:
     - font-weight: bold
     - text-align: center
-    - font-size: 23px
+    - font-size: 21px
     - margin-top: 0
+    - filter: >-
+        drop-shadow(-2px -2px 0 rgba(0, 0, 0, 0.65)) drop-shadow(2px 2px 0
+        rgba(255, 255, 255, 0.15))
   label:
     - white-space: normal
     - display: block
@@ -898,39 +903,24 @@ styles:
   icon:
     - color: >
         [[[ if (!entity.attributes.is_clear) { return
-        entity.attributes.icon_color_alert; } else { return
-        entity.attributes.icon_color_clear; } ]]]
-    - width: 70px
-    - height: 70px
+        entity.attributes.icon_color_alert; } else { return '#40CF8A'; } ]]]
+    - width: 50px
+    - height: 50px
     - margin: 5px 0
+    - filter: >-
+        drop-shadow(-2px -2px 0 rgba(0, 0, 0, 0.65)) drop-shadow(2px 2px 0
+        rgba(255, 255, 255, 0.35))
 icon: >
   [[[ if (!entity.attributes.is_clear) { return entity.attributes.icon_alert; }
   else { return entity.attributes.icon_clear; } ]]]
 show_label: true
 label: >
-  [[[ if (!entity.attributes.is_clear) { return entity.attributes.alert_list.join(', '); } else { return entity.attributes.text_all_clear; } ]]]
+  [[[ if (!entity.attributes.is_clear) { return entity.attributes.alert_list.join(', '); } else { return
+  entity.attributes.text_all_clear; } ]]]
 tap_action:
   action: none
 hold_action:
   action: none
-card_mod:
-  style: |
-    ha-card::after {
-      content: '' !important;
-      position: absolute !important;
-      width: 100px !important;
-      height: 100% !important;
-      background: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0) 0%,
-        rgba(255, 255, 255, 0.15) 50%,
-        rgba(255, 255, 255, 0) 100%
-      ) !important;
-      transform: skewX(-15deg) translateX(50px) !important;
-      top: 0 !important;
-      left: -20px !important;
-      z-index: 1 !important;
-    }
 ```
 
 ---
