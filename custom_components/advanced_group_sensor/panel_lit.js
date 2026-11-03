@@ -2099,7 +2099,7 @@ class AdvancedGroupSensorPanel extends LitElement {
         <div class="group-header">Backup & Restore</div>
         <div class="group-body">
           <div style="background:#0d0f18;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;">
-            <div class="hint"><em>Export saves all conditions, groups, and settings to a JSON file. To restore, create a new sensor with the same name, open its panel, and import the backup file. Duplicate Sensor makes a copy of the last saved version, including its Task Trackers, under a new name.</em></div>
+            <div class="hint"><em>Export saves all conditions, groups, and settings to a JSON file. To restore, create a new sensor with the same name, open its panel, and import the backup file. Duplicate Sensor makes a copy of the last saved version, including its Task Trackers, under a new name. Copied tasks start with no Done history.</em></div>
             <div class="backup-row">
               <button class="backup-btn export-btn" @click="${this._exportBackup}">⬇ Export Sensor</button>
               <button class="backup-btn import-btn" @click="${this._triggerImport}">⬆ Import Sensor</button>
