@@ -13,7 +13,7 @@ import voluptuous as vol
 from .const import DOMAIN, COLOR_MAP, RELEVANT_DOMAINS
 from .tasks import TaskManager, normalize_tasks
 from .config_flow import SKIP_REASONS, name_error
-from .import_helpers import MAX_FILE_BYTES, parse_export
+from .import_helpers import MAX_FILE_BYTES, clean_name, parse_export
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,6 +130,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_get_tasks)
         websocket_api.async_register_command(hass, websocket_task_done)
         websocket_api.async_register_command(hass, websocket_task_undo)
+        websocket_api.async_register_command(hass, websocket_duplicate_sensor)
         websocket_api.async_register_command(hass, websocket_import_preview)
         websocket_api.async_register_command(hass, websocket_import_sensors)
         hass.data[DOMAIN]["_ws_registered"] = True
@@ -366,7 +367,55 @@ async def websocket_task_undo(hass, connection, msg):
         connection.send_result(msg["id"], {"tasks": manager.all_status()})
 
 
+_DUPLICATE_ERRORS = {
+    "invalid_name": "Name must contain at least one letter, number or underscore.",
+    "already_configured": "An Advanced Group Sensor with this name already exists.",
+    "entity_already_exists": "That name is already used by another entity in Home Assistant.",
+}
+
 _BAD_FILE = "This is not a Combined Notifications export file. Use the Export ALL for AGS button in Combined Notifications."
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "advanced_group_sensor/duplicate_sensor",
+    vol.Required("entry_id"): str,
+    vol.Required("new_name"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_duplicate_sensor(hass, connection, msg):
+    """Create a new sensor that is a copy of an existing one (last saved version)."""
+    entry = hass.config_entries.async_get_entry(msg["entry_id"])
+    if not entry or entry.domain != DOMAIN:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    typed = msg["new_name"].strip()
+    name = clean_name(typed)
+    error = name_error(hass, name)
+    if error:
+        connection.send_error(msg["id"], error, _DUPLICATE_ERRORS[error])
+        return
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_IMPORT},
+        data={
+            "name": name,
+            "friendly_sensor_name": typed,
+            "config": dict(entry.data),
+            "options": dict(entry.options),
+        },
+    )
+    if result["type"] != FlowResultType.CREATE_ENTRY:
+        connection.send_error(
+            msg["id"], "duplicate_failed", f"Could not create the copy ({result.get('reason')})"
+        )
+        return
+
+    connection.send_result(
+        msg["id"], {"name": name, "entry_id": result["result"].entry_id}
+    )
 
 
 @websocket_api.websocket_command({

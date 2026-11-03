@@ -1871,6 +1871,23 @@ class AdvancedGroupSensorPanel extends LitElement {
     e.target.value = "";
   }
 
+  async _duplicateSensor() {
+    const typed = window.prompt("Name for the new sensor? (A copy of the last saved version of this sensor is created.)");
+    if (typed === null || !typed.trim()) return;
+    try {
+      const res = await this.hass.callWS({
+        type: "advanced_group_sensor/duplicate_sensor",
+        entry_id: this._entryId,
+        new_name: typed.trim(),
+      });
+      this._backupMsg = `✓ Created sensor.${res.name}. Open it from Settings → Devices & Services → Advanced Group Sensor.`;
+    } catch (err) {
+      this._backupMsg = `✗ Could not duplicate: ${err.message}`;
+    }
+    this.requestUpdate();
+    setTimeout(() => { this._backupMsg = ""; this.requestUpdate(); }, 8000);
+  }
+
   _triggerCnImport() {
     const input = this.shadowRoot.getElementById("cn-file-input");
     if (input) input.click();
@@ -2082,10 +2099,15 @@ class AdvancedGroupSensorPanel extends LitElement {
         <div class="group-header">Backup & Restore</div>
         <div class="group-body">
           <div style="background:#0d0f18;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;">
-            <div class="hint"><em>Export saves all conditions, groups, and settings to a JSON file. To restore, create a new sensor with the same name, open its panel, and import the backup file.</em></div>
+            <div class="hint"><em>Export saves all conditions, groups, and settings to a JSON file. To restore, create a new sensor with the same name, open its panel, and import the backup file. Duplicate Sensor makes a copy of the last saved version under a new name.</em></div>
             <div class="backup-row">
               <button class="backup-btn export-btn" @click="${this._exportBackup}">⬇ Export Sensor</button>
               <button class="backup-btn import-btn" @click="${this._triggerImport}">⬆ Import Sensor</button>
+              <button class="backup-btn export-btn"
+                ?disabled="${!this._isExistingSensor || !(this._config.conditions || []).length}"
+                style="${!this._isExistingSensor || !(this._config.conditions || []).length ? 'opacity:0.45;cursor:not-allowed' : ''}"
+                title="Make a copy of this sensor under a new name"
+                @click="${this._duplicateSensor}">⧉ Duplicate Sensor</button>
               <input type="file" id="backup-file-input" accept=".json" style="display:none"
                 @change="${this._importBackup}">
             </div>

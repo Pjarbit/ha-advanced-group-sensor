@@ -36,6 +36,10 @@ The integration stores the done dates itself. No helpers, no template YAML. Pres
 
 Birthday tip: make two yearly tasks with the same date. `Send Mom a Card` with 7 lead days, and `Call Mom` with 0. Each clears on its own Done and both come back next year.
 
+## Duplicate Sensor (new in 1.1.0)
+
+In a sensor's panel, **⧉ Duplicate Sensor** (Backup & Restore) asks for a new name and creates a copy of the last saved version: conditions, colors, icons, labels and attribute mode. Task Trackers are not copied. The button is greyed out until the sensor has been saved with at least one condition.
+
 ## Moving from Combined Notifications (new in 1.1.0)
 
 You can bring every Combined Notifications sensor over in one go, keeping each sensor's name and entity ID:
