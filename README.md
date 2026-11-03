@@ -36,6 +36,18 @@ The integration stores the done dates itself. No helpers, no template YAML. Pres
 
 Birthday tip: make two yearly tasks with the same date. `Send Mom a Card` with 7 lead days, and `Call Mom` with 0. Each clears on its own Done and both come back next year.
 
+## Moving from Combined Notifications (new in 1.1.0)
+
+You can bring every Combined Notifications sensor over in one go, keeping each sensor's name and entity ID:
+
+1. Update Combined Notifications to 8.12.0 or later. **If you use compatibility mode, turn it off and test first.** AGS does not have a compatibility mode (BREAKING CHANGE).
+2. Rename each Combined Notifications sensor and its Fault Count sensor so the entity ID ends in `_old` (for example `sensor.kitchen_old`).
+3. In any Combined Notifications panel, click **⬇ Export ALL for AGS** in Backup & Restore.
+4. In AGS, create a sensor named `import` and open its panel. At the bottom, click **⬆ Import from Combined Notifications**, choose the file, and tick the sensors to bring over. Sensors that can't be imported yet are greyed out with the reason.
+5. Check the new sensors, then delete the `import` sensor and disable the old Combined Notifications entries.
+
+Conditions, colors, icons, labels and attribute mode carry over. Nothing in Combined Notifications is changed.
+
 ## Installation (HACS)
 
 1. Add this repository as a custom repository in HACS (category: Integration).

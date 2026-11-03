@@ -1020,6 +1020,9 @@ class AdvancedGroupSensorPanel extends LitElement {
       _totalPaused: { type: Number },
       _entitySearch: { type: Object },
       _backupMsg:    { type: String },
+      _importRows:   { type: Array },
+      _importSel:    { type: Object },
+      _importMsg:    { type: String },
       _individualDomainFilter: { type: Object },
       _taskStatus:   { type: Object },
       _expandedTasks: { type: Object },
@@ -1042,6 +1045,10 @@ class AdvancedGroupSensorPanel extends LitElement {
     this._groupViewFilter = {};
     this._entitySearch = {};
     this._backupMsg = "";
+    this._importRows = null;
+    this._importSel = {};
+    this._importMsg = "";
+    this._importText = "";
     this._showRenameWarning = false;
     this._renaming = false;
     this._originalName = "";
@@ -1864,6 +1871,94 @@ class AdvancedGroupSensorPanel extends LitElement {
     e.target.value = "";
   }
 
+  _triggerCnImport() {
+    const input = this.shadowRoot.getElementById("cn-file-input");
+    if (input) input.click();
+  }
+
+  async _cnFileChosen(e) {
+    const input = e.target;
+    const file = input.files[0];
+    if (!file) return;
+    this._importMsg = "";
+    try {
+      this._importText = await file.text();
+      const res = await this.hass.callWS({
+        type: "advanced_group_sensor/import_preview",
+        file_text: this._importText,
+      });
+      this._importRows = res.sensors;
+      this._importSel = Object.fromEntries(res.sensors.filter(r => r.ready).map(r => [r.name, true]));
+    } catch (err) {
+      this._importRows = null;
+      this._importMsg = `✗ ${err.message}`;
+    }
+    input.value = "";
+    this.requestUpdate();
+  }
+
+  _cnToggle(name, checked) {
+    this._importSel = { ...this._importSel, [name]: checked };
+    this.requestUpdate();
+  }
+
+  _cnCancel() {
+    this._importRows = null;
+    this._importSel = {};
+    this._importText = "";
+    this.requestUpdate();
+  }
+
+  async _cnImportSelected() {
+    const names = Object.keys(this._importSel).filter(n => this._importSel[n]);
+    if (!names.length) {
+      this._importMsg = "✗ Select at least one sensor.";
+      this.requestUpdate();
+      return;
+    }
+    try {
+      const res = await this.hass.callWS({
+        type: "advanced_group_sensor/import_sensors",
+        file_text: this._importText,
+        names,
+      });
+      const skipped = res.skipped.map(x => `${x.name}: ${x.reason}`).join("; ");
+      this._importMsg = `✓ Created ${res.created.length} sensor(s): ${res.created.join(", ") || "none"}.` +
+        (skipped ? ` Skipped: ${skipped}.` : "") +
+        (res.created.length ? " You can delete this import sensor now." : "");
+      this._importRows = null;
+      this._importSel = {};
+      this._importText = "";
+    } catch (err) {
+      this._importMsg = `✗ Import failed: ${err.message}`;
+    }
+    this.requestUpdate();
+  }
+
+  _renderCnImport() {
+    if (!this._importRows) return "";
+    const rows = this._importRows;
+    const count = Object.values(this._importSel).filter(Boolean).length;
+    return html`
+      <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px;">
+        <div class="hint"><em>Each sensor keeps its original name. Nothing in Combined Notifications is changed.</em></div>
+        ${rows.map(r => html`
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:0.9rem;color:${r.ready ? "#e2e8f0" : "#64748b"};">
+            <input type="checkbox" ?disabled="${!r.ready}" .checked="${!!this._importSel[r.name]}"
+              @change="${e => this._cnToggle(r.name, e.target.checked)}">
+            <span>
+              ${r.label} (sensor.${r.name}, ${r.conditions} conditions)
+              ${r.compat ? html`<br><span style="color:#f6ad55">⚠ Compatibility mode was ON in Combined Notifications. AGS has no compatibility mode.</span>` : ""}
+              ${!r.ready ? html`<br><span style="color:#fc8181">Can't import yet: ${r.reason}</span>` : ""}
+            </span>
+          </label>`)}
+        <div class="backup-row">
+          <button class="backup-btn import-btn" @click="${this._cnImportSelected}">⬆ Import ${count} selected</button>
+          <button class="backup-btn export-btn" @click="${this._cnCancel}">Cancel</button>
+        </div>
+      </div>`;
+  }
+
   _renderGeneral() {
     const c = this._config;
     return html`
@@ -1995,6 +2090,16 @@ class AdvancedGroupSensorPanel extends LitElement {
                 @change="${this._importBackup}">
             </div>
             ${this._backupMsg ? html`<div class="backup-msg">${this._backupMsg}</div>` : ""}
+          </div>
+          <div style="background:#0d0f18;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+            <div class="hint"><em>Moving from Combined Notifications? Rename each Combined Notifications sensor (and its Fault Count sensor) so its entity ID ends in _old, click Export ALL for AGS in Combined Notifications, then choose that file here. AGS does not have a compatibility mode (BREAKING CHANGE): if you use it in Combined Notifications, turn it off and test first.</em></div>
+            <div class="backup-row">
+              <button class="backup-btn import-btn" @click="${this._triggerCnImport}">⬆ Import from Combined Notifications</button>
+              <input type="file" id="cn-file-input" accept=".json" style="display:none"
+                @change="${this._cnFileChosen}">
+            </div>
+            ${this._importMsg ? html`<div class="backup-msg">${this._importMsg}</div>` : ""}
+            ${this._renderCnImport()}
           </div>
         </div>
       </div>

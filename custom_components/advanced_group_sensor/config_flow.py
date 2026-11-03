@@ -3,9 +3,38 @@ import logging
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
+from .import_helpers import build_entry_data, build_options, clean_name
 
 _LOGGER = logging.getLogger(__name__)
+
+# Why a sensor in an import file can't be created right now (shown in the panel).
+SKIP_REASONS = {
+    "invalid_name": "the name is not valid",
+    "already_configured": "an Advanced Group Sensor with this name already exists",
+    "entity_already_exists": (
+        "sensor.{name} is still in use - rename the Combined Notifications "
+        "sensor (and its Fault Count sensor) to end in _old first"
+    ),
+}
+
+
+def name_error(hass, name):
+    """Return an error key if `name` can't be used for a new sensor, else None."""
+    if not name:
+        return "invalid_name"
+    if any(
+        entry.data.get("name") == name
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    ):
+        return "already_configured"
+    entity_id = f"sensor.{name}"
+    if hass.states.get(entity_id) is not None or er.async_get(hass).async_is_registered(
+        entity_id
+    ):
+        return "entity_already_exists"
+    return None
 
 
 class AdvancedGroupSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -62,6 +91,21 @@ class AdvancedGroupSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "example": "home_security",
             },
+        )
+
+    async def async_step_import(self, import_data):
+        """Create one sensor from imported data (Import from Combined Notifications)."""
+        name = clean_name(import_data.get("name"))
+        error = name_error(self.hass, name)
+        if error:
+            _LOGGER.warning("Advanced Group Sensor: not importing %r (%s)", name, error)
+            return self.async_abort(reason=error)
+
+        friendly = str(import_data.get("friendly_sensor_name") or "").strip()
+        return self.async_create_entry(
+            title=friendly or name,
+            data=build_entry_data(import_data.get("config") or {}, name, friendly),
+            options=build_options(import_data.get("options") or {}),
         )
 
     @staticmethod

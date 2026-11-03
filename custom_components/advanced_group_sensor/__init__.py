@@ -3,14 +3,17 @@
 import logging
 import os
 import time
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.helpers import entity_registry as er
 import voluptuous as vol
 from .const import DOMAIN, COLOR_MAP, RELEVANT_DOMAINS
 from .tasks import TaskManager, normalize_tasks
+from .config_flow import SKIP_REASONS, name_error
+from .import_helpers import MAX_FILE_BYTES, parse_export
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,6 +130,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_get_tasks)
         websocket_api.async_register_command(hass, websocket_task_done)
         websocket_api.async_register_command(hass, websocket_task_undo)
+        websocket_api.async_register_command(hass, websocket_import_preview)
+        websocket_api.async_register_command(hass, websocket_import_sensors)
         hass.data[DOMAIN]["_ws_registered"] = True
 
     # Task trackers: must exist before platforms load (sensor + button read it)
@@ -359,3 +364,76 @@ async def websocket_task_undo(hass, connection, msg):
     if manager:
         await manager.async_clear_done(msg["task_id"])
         connection.send_result(msg["id"], {"tasks": manager.all_status()})
+
+
+_BAD_FILE = "This is not a Combined Notifications export file. Use the Export ALL for AGS button in Combined Notifications."
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "advanced_group_sensor/import_preview",
+    vol.Required("file_text"): vol.All(str, vol.Length(max=MAX_FILE_BYTES)),
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_import_preview(hass, connection, msg):
+    """List the sensors in a Combined Notifications export file and whether each can be imported."""
+    sensors, error = parse_export(msg["file_text"])
+    if error:
+        connection.send_error(msg["id"], error, _BAD_FILE)
+        return
+
+    rows = []
+    for s in sensors:
+        problem = name_error(hass, s["name"])
+        rows.append({
+            "name": s["name"],
+            "label": s["friendly"] or s["name"],
+            "conditions": len(s["config"].get("conditions") or []),
+            "compat": s["compat"],
+            "ready": problem is None,
+            "reason": SKIP_REASONS[problem].format(name=s["name"]) if problem else "",
+        })
+    connection.send_result(msg["id"], {"sensors": rows})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "advanced_group_sensor/import_sensors",
+    vol.Required("file_text"): vol.All(str, vol.Length(max=MAX_FILE_BYTES)),
+    vol.Required("names"): [str],
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_import_sensors(hass, connection, msg):
+    """Create the chosen sensors from a Combined Notifications export file."""
+    sensors, error = parse_export(msg["file_text"])
+    if error:
+        connection.send_error(msg["id"], error, _BAD_FILE)
+        return
+
+    by_name = {s["name"]: s for s in sensors}
+    created, skipped = [], []
+    for name in msg["names"]:
+        sensor = by_name.get(name)
+        if sensor is None:
+            skipped.append({"name": name, "reason": "not in the file"})
+            continue
+        problem = name_error(hass, name)
+        if problem:
+            skipped.append({"name": name, "reason": SKIP_REASONS[problem].format(name=name)})
+            continue
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_IMPORT},
+            data={
+                "name": name,
+                "friendly_sensor_name": sensor["friendly"],
+                "config": sensor["config"],
+                "options": sensor["options"],
+            },
+        )
+        if result["type"] == FlowResultType.CREATE_ENTRY:
+            created.append(name)
+        else:
+            skipped.append({"name": name, "reason": f"could not be created ({result.get('reason')})"})
+
+    connection.send_result(msg["id"], {"created": created, "skipped": skipped})
