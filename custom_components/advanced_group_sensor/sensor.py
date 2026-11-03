@@ -9,8 +9,13 @@ from homeassistant.helpers.event import async_track_state_change_event, async_ca
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import slugify
 import logging
 from .const import COLOR_MAP, DOMAIN
+from .tasks import TaskManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,14 +32,57 @@ async def async_setup_entry(
     settings = _build_settings(config_entry.data)
     use_attributes = config_entry.options.get("use_attributes", False)
 
+    task_manager: TaskManager | None = hass.data.get(DOMAIN, {}).get(
+        f"{config_entry.entry_id}_tasks"
+    )
+
     sensor = AdvancedGroupSensorEntity(
-        hass, name, friendly_sensor_name, conditions, settings, config_entry.entry_id, use_attributes
+        hass, name, friendly_sensor_name, conditions, settings, config_entry.entry_id,
+        use_attributes, task_manager,
     )
     count_sensor = AdvancedGroupSensorCountEntity(
         hass, name, sensor, config_entry.entry_id
     )
-    async_add_entities([sensor, count_sensor], update_before_add=True)
+    task_sensors = [
+        TaskDaysRemainingSensor(task_manager, task["id"], sensor)
+        for task in (task_manager.tasks if task_manager else [])
+    ]
+    async_add_entities([sensor, count_sensor, *task_sensors], update_before_add=True)
     hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = sensor
+
+
+def device_display_name(name: str, friendly_sensor_name: str | None) -> str:
+    """Device name = the Friendly Display Name, or the raw sensor name if none."""
+    return friendly_sensor_name.strip() if friendly_sensor_name and friendly_sensor_name.strip() else name
+
+
+def build_device_info(entry_id: str, device_name: str) -> DeviceInfo:
+    """One device per config entry. Built with keyword arguments, which works
+    both before HA 2026.11 (DeviceInfo is a TypedDict) and from 2026.11 on
+    (DeviceInfo is a dataclass, dict-style use is being phased out)."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry_id)},
+        name=device_name,
+        manufacturer="Advanced Group Sensor",
+        model="Virtual Sensor",
+    )
+
+
+class InPlaceEntityIdMixin:
+    """Opt in to in-place entity_id changes (HA 2026.11+).
+
+    Entities that implement async_added_to_hass / async_will_remove_from_hass
+    are otherwise removed and re-added when their entity_id is changed, and
+    that fallback is removed in HA 2027.11. Nothing in this integration is
+    keyed on the entity's own entity_id, so there is nothing to re-wire.
+    On older HA the hook is never called.
+    """
+
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        parent = getattr(super(), "async_entity_id_changed", None)
+        if parent is not None:
+            parent(old_entity_id)
 
 
 def _build_settings(data: dict) -> dict:
@@ -62,7 +110,7 @@ def _build_settings(data: dict) -> dict:
     }
 
 
-class AdvancedGroupSensorEntity(Entity):
+class AdvancedGroupSensorEntity(InPlaceEntityIdMixin, Entity):
     """Representation of an Advanced Group Sensor."""
 
     def __init__(
@@ -74,6 +122,7 @@ class AdvancedGroupSensorEntity(Entity):
         settings: dict[str, Any],
         entry_id: str,
         use_attributes: bool = False,
+        task_manager: TaskManager | None = None,
     ):
         """Initialize the sensor."""
         self._hass = hass
@@ -81,11 +130,8 @@ class AdvancedGroupSensorEntity(Entity):
         self._friendly_sensor_name = friendly_sensor_name
         self._entry_id = entry_id
         self._use_attributes = use_attributes
-        self._attr_name = (
-            friendly_sensor_name
-            if friendly_sensor_name and friendly_sensor_name.strip()
-            else name
-        )
+        self._task_manager = task_manager
+        self._device_name = device_display_name(name, friendly_sensor_name)
         self._raw_conditions = conditions
         self._conditions = self._validate_conditions(conditions)
         self._settings = settings
@@ -96,9 +142,13 @@ class AdvancedGroupSensorEntity(Entity):
         self._startup_unsub = None
         self._safety_net_unsub = None
 
-        self._attr_has_entity_name = False
+        # HA naming model: the device carries the name, this sensor is the
+        # main entity of the device (name None), so it shows the device name.
+        # entity_id is suggested explicitly so it stays sensor.<sensor name>.
+        self._attr_has_entity_name = True
+        self._attr_name = None
+        self.entity_id = f"sensor.{name}"
         self._attr_should_poll = False
-        self._attr_entity_id = f"sensor.{name}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = settings["icons"]["clear"]
 
@@ -202,10 +252,6 @@ class AdvancedGroupSensorEntity(Entity):
     # ── Properties ───────────────────────────────────────────────────────
 
     @property
-    def name(self) -> str:
-        return self._name
-
-    @property
     def unique_id(self) -> str:
         return f"advanced_group_sensor_{self._entry_id}"
 
@@ -226,7 +272,7 @@ class AdvancedGroupSensorEntity(Entity):
         attrs = {
             "unmet_conditions": self._unmet,
             "number_unmet": len(self._unmet),
-            "number_total": len(self._conditions),
+            "number_total": len(self._conditions) + self._active_task_count(),
             "text_all_clear": self._settings["text_all_clear"],
             "icon_clear": self._settings["icons"]["clear"],
             "icon_alert": self._settings["icons"]["alert"],
@@ -245,19 +291,19 @@ class AdvancedGroupSensorEntity(Entity):
             attrs["alert_list"] = list(self._unmet)
         return attrs
 
+    def _active_task_count(self) -> int:
+        if not self._task_manager:
+            return 0
+        return sum(1 for t in self._task_manager.tasks if not t.get("paused"))
+
     @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": self._name,
-            "manufacturer": "Advanced Group Sensor",
-            "model": "Virtual Sensor",
-        }
+    def device_info(self) -> DeviceInfo:
+        return build_device_info(self._entry_id, self._device_name)
 
     # ── State change listener ─────────────────────────────────────────────
 
     @callback
-    def _state_change_listener(self, event):
+    def _state_change_listener(self, event=None):
         """Handle entity state changes with debouncing."""
         if self._debounced_update_task:
             self._debounced_update_task.cancel()
@@ -275,6 +321,14 @@ class AdvancedGroupSensorEntity(Entity):
     async def async_added_to_hass(self) -> None:
         """Set up listeners when added to HA."""
         await self._subscribe_listeners()
+
+        # Task trackers: re-evaluate on Done press, midnight rollover, task edits
+        if self._task_manager:
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self._hass, self._task_manager.signal, self._state_change_listener
+                )
+            )
 
         async def _resubscribe(_now=None) -> None:
             """Resubscribe and re-evaluate — catches late-loading integrations."""
@@ -397,6 +451,10 @@ class AdvancedGroupSensorEntity(Entity):
             if label and label.strip():
                 self._unmet.append(label)
 
+        # Task trackers that are due (or inside their lead window)
+        if self._task_manager:
+            self._unmet.extend(self._task_manager.alerting_labels())
+
         # Build state based on mode
         if self._use_attributes:
             # Attribute mode: short binary state, full list in attributes
@@ -482,8 +540,14 @@ class AdvancedGroupSensorEntity(Entity):
         try:
             self._settings = new_settings
             if "friendly_sensor_name" in new_settings and new_settings["friendly_sensor_name"]:
-                self._attr_name = new_settings["friendly_sensor_name"]
                 self._friendly_sensor_name = new_settings["friendly_sensor_name"]
+                self._device_name = device_display_name(self._name, self._friendly_sensor_name)
+                # The device carries the display name: update it in the registry.
+                # A name the user set on the device (name_by_user) still wins.
+                dev_reg = dr.async_get(self._hass)
+                device = dev_reg.async_get_device(identifiers={(DOMAIN, self._entry_id)})
+                if device and device.name != self._device_name:
+                    dev_reg.async_update_device(device.id, name=self._device_name)
             if self._use_attributes:
                 self._state = "off"
             else:
@@ -504,7 +568,7 @@ class AdvancedGroupSensorEntity(Entity):
 
 # ── Count sensor ──────────────────────────────────────────────────────────────
 
-class AdvancedGroupSensorCountEntity(Entity):
+class AdvancedGroupSensorCountEntity(InPlaceEntityIdMixin, Entity):
     """Sensor that shows count of unmet conditions."""
 
     def __init__(
@@ -516,9 +580,10 @@ class AdvancedGroupSensorCountEntity(Entity):
     ):
         self._hass = hass
         self._parent = parent_sensor
-        self._attr_name = f"{name} Fault Count"
+        self._attr_name = "Fault Count"
         self._attr_unique_id = f"advanced_group_sensor_{entry_id}_count"
-        self._attr_has_entity_name = False
+        self._attr_has_entity_name = True
+        self.entity_id = f"sensor.{name}_fault_count"
         self._attr_should_poll = False
         self._attr_icon = "mdi:counter"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -533,3 +598,66 @@ class AdvancedGroupSensorCountEntity(Entity):
 
     async def async_added_to_hass(self) -> None:
         self._parent._count_sensor = self
+
+
+# ── Task days remaining sensors ───────────────────────────────────────────────
+
+class TaskDaysRemainingSensor(InPlaceEntityIdMixin, Entity):
+    """Days until a task is due. Negative = overdue. Use it on countdown cards."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(
+        self,
+        manager: TaskManager,
+        task_id: str,
+        parent_sensor: AdvancedGroupSensorEntity,
+    ) -> None:
+        self._manager = manager
+        self._task_id = task_id
+        self._parent = parent_sensor
+        task = manager.get_task(task_id) or {}
+        self._attr_name = f"{task.get('name', task_id)} Days Remaining"
+        # Suggested id: sensor.<label>_days_remaining (registry adds _2 if taken)
+        self.entity_id = f"sensor.{slugify(task.get('name', task_id))}_days_remaining"
+        self._attr_unique_id = (
+            f"advanced_group_sensor_{manager.entry_id}_task_{task_id}_days"
+        )
+
+    @property
+    def state(self):
+        status = self._manager.status(self._task_id)
+        return status["days_until_due"] if status else None
+
+    @property
+    def unit_of_measurement(self) -> str:
+        return "days"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        status = self._manager.status(self._task_id) or {}
+        task = self._manager.get_task(self._task_id) or {}
+        return {
+            "task_id": self._task_id,
+            "repeat": task.get("repeat"),
+            "lead_days": task.get("lead_days", 0),
+            "paused": task.get("paused", False),
+            "due_date": status.get("due_date"),
+            "last_done": status.get("last_done"),
+            "alerting": status.get("alerting", False),
+        }
+
+    @property
+    def device_info(self):
+        return self._parent.device_info
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, self._manager.signal, self._refresh)
+        )
+
+    @callback
+    def _refresh(self) -> None:
+        self.async_write_ha_state()

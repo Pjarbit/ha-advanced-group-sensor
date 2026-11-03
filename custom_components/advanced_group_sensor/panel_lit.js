@@ -1,5 +1,5 @@
 /**
- * Advanced Group Sensor Panel v1.0.4
+ * Advanced Group Sensor Panel v1.1.0
  * Style injection + force visibility fix for card-mod compatibility
  */
 
@@ -42,15 +42,15 @@ if (typeof css  !== "function") css  = (strings, ...values) => {
 };
 
 try {
-  console.log('%cAdvanced Group Sensor v1.0.4 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.1.0 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
   definePanel();
-  console.log('%cAdvanced Group Sensor v1.0.4 → Successfully registered', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.1.0 → Successfully registered', 'color:#39FF14; font-weight:bold');
 } catch (e) {
   console.error('🚨 Advanced Group Sensor PANEL CRASHED during initialization:', e);
   const errorHTML = `
     <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e2535;color:#fc8181;padding:30px 40px;border-radius:16px;border:3px solid #fc8181;z-index:999999;font-family:sans-serif;max-width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.8);">
       <h2 style="margin:0 0 16px 0;color:#fc8181">Advanced Group Sensor Panel Failed to Load</h2>
-      <p style="margin:8px 0">Version 1.0.4</p>
+      <p style="margin:8px 0">Version 1.1.0</p>
       <pre style="background:#000;color:#fff;padding:12px;text-align:left;font-size:13px;overflow:auto;max-height:300px;">${e.message}\n${e.stack ? e.stack.substring(0,800) : ''}</pre>
       <button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#63b3ed;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:600">Reload Page</button>
     </div>
@@ -598,6 +598,31 @@ const CN_STYLES = `
     width: fit-content;
     box-shadow: 4px 4px 8px rgba(0,0,0,0.4), -2px -2px 4px rgba(255,255,255,0.05), inset 1px 1px 1px rgba(255,255,255,0.08);
   }
+  /* Task Done button: red when the task is alerting (clear it),
+     muted gray "Done early" when it isn't due (covers the next occurrence) */
+  .task-done-btn {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .task-done-btn.due {
+    background: rgb(190, 11, 11);
+    border: 1px solid rgba(255, 120, 120, 0.6);
+    color: #ffffff;
+  }
+  .task-done-btn.due:hover { background: rgb(215, 30, 30); }
+  .task-done-btn.early {
+    background: transparent;
+    border: 1px solid rgba(160, 174, 192, 0.5);
+    color: rgba(160, 174, 192, 0.9);
+  }
+  .task-done-btn.early:hover { border-color: rgba(160, 174, 192, 0.9); color: #e2e8f0; }
+  .task-done-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .add-btn:hover {
     background: linear-gradient(145deg, #6abff0, #3d8fc4);
     border-color: rgba(77,159,212,0.8);
@@ -996,6 +1021,8 @@ class AdvancedGroupSensorPanel extends LitElement {
       _entitySearch: { type: Object },
       _backupMsg:    { type: String },
       _individualDomainFilter: { type: Object },
+      _taskStatus:   { type: Object },
+      _expandedTasks: { type: Object },
     };
   }
 
@@ -1005,6 +1032,8 @@ class AdvancedGroupSensorPanel extends LitElement {
     this._options = {};
     this._states = {};
     this._activeTab = "general";
+    this._taskStatus = {};
+    this._expandedTasks = new Set();
     this._saving = false;
     this._saved = false;
     this._error = "";
@@ -1110,6 +1139,7 @@ class AdvancedGroupSensorPanel extends LitElement {
       this._states = result.states || {};
 
       if (!this._config.conditions) this._config.conditions = [];
+      if (!Array.isArray(this._config.tasks)) this._config.tasks = [];
       this._totalPaused = this._config.conditions.filter(c => c.paused).length;
 
       this._config.conditions = this._config.conditions.map(c => ({
@@ -1122,6 +1152,7 @@ class AdvancedGroupSensorPanel extends LitElement {
       }));
 
       this._loadStates();
+      this._loadTaskStatus();
 
     } catch (e) {
       console.log("AGS Panel: error:", e);
@@ -1176,11 +1207,23 @@ class AdvancedGroupSensorPanel extends LitElement {
           operator: OPERATOR_LABEL_TO_SYMBOL[ac.operator] || ac.operator,
         })),
       }));
-      await this.hass.callWS({
+      const result = await this.hass.callWS({
         type: "advanced_group_sensor/save_config",
         entry_id: this._entryId,
         data: { ...this._config, conditions },
       });
+      // Server cleans the task list and assigns ids; keep the panel in sync
+      if (result && Array.isArray(result.tasks)) {
+        this._config = { ...this._config, tasks: result.tasks };
+      }
+      // A reload (tasks added/removed/renamed) takes a moment. Until it finishes
+      // the old entry answers with the old task list, so pass the saved ids and
+      // let _loadTaskStatus retry until the reply matches.
+      this._loadTaskStatus(
+        result && result.reloading && Array.isArray(result.tasks)
+          ? result.tasks.map(t => t.id)
+          : null
+      );
       this._saved = true;
     } catch (e) {
       this._error = `Failed to save: ${e.message}`;
@@ -1734,6 +1777,12 @@ class AdvancedGroupSensorPanel extends LitElement {
               <span class="badge teal" title="${this._smartGroupEntityCount} Entities">${this._smartGroupEntityCount}</span>
               ${this._smartGroupPausedCount > 0 ? html`<span class="badge orange" title="${this._smartGroupPausedCount} Paused">${this._smartGroupPausedCount}</span>` : ""}
             </button>
+            <button class="tab ${this._activeTab === "tasks" ? "active" : ""}"
+              @click="${() => { this._activeTab = "tasks"; this.requestUpdate(); }}">
+              Tasks
+              <span class="badge blue" title="${this._taskCount} Tasks">${this._taskCount}</span>
+              ${this._taskAlertCount > 0 ? html`<span class="badge yellow" title="${this._taskAlertCount} Alerting">${this._taskAlertCount}</span>` : ""}
+            </button>
             <button class="tab ${this._activeTab === "overview" ? "active" : ""}"
               @click="${() => { this._activeTab = "overview"; this.requestUpdate(); }}">
               Overview
@@ -1752,11 +1801,12 @@ class AdvancedGroupSensorPanel extends LitElement {
             ${this._activeTab === "general"     ? this._renderGeneral()     : ""}
             ${this._activeTab === "individual"  ? this._renderIndividual()  : ""}
             ${this._activeTab === "smartgroups" ? this._renderSmartGroups() : ""}
+            ${this._activeTab === "tasks"       ? this._renderTasks()       : ""}
             ${this._activeTab === "overview"    ? this._renderOverview()    : ""}
           </div>
 
           <div class="dialog-footer">
-            <span class="version-stamp">pja v1.0.4</span>
+            <span class="version-stamp">pja v1.1.0</span>
             ${this._error ? html`<span class="error-msg">${this._error}</span>` : ""}
             ${this._saved ? html`<span class="saved-msg">✓ Saved</span>` : ""}
             <div class="footer-buttons">
@@ -2008,6 +2058,248 @@ class AdvancedGroupSensorPanel extends LitElement {
           ${individual.length === 0 ? html`<div class="empty-hint">No individual conditions yet. Add one below.</div>` : ""}
           ${individual.map(({ c, i }) => this._renderConditionCard(c, i))}
         </div>
+      </div>
+    `;
+  }
+
+  // ── Task trackers ───────────────────────────────────────────────────────
+  // Tasks are things HA can't see you do (meds, workouts, calling Mom).
+  // The integration stores the last done date and creates, per task:
+  //   button.<task name>_done            press when done
+  //   sensor.<task name>_days_remaining  days until due (negative = overdue)
+
+  get _taskCount() {
+    return (this._config?.tasks || []).length;
+  }
+
+  get _taskAlertCount() {
+    return Object.values(this._taskStatus || {}).filter(t => t.alerting).length;
+  }
+
+  // expectedIds: task ids just saved. When given, a reply whose ids don't
+  // match exactly is stale (old entry still loaded) and is retried.
+  // Retries on errors too (entry briefly "not_loaded" mid reload).
+  // Up to 5 retries, 800 ms apart.
+  async _loadTaskStatus(expectedIds = null, attempt = 0) {
+    if (!this.hass || !this._entryId) return;
+    const MAX_RETRIES = 5;
+    const retry = () => setTimeout(() => this._loadTaskStatus(expectedIds, attempt + 1), 800);
+    try {
+      const result = await this.hass.callWS({
+        type: "advanced_group_sensor/get_tasks",
+        entry_id: this._entryId,
+      });
+      const tasks = result.tasks || {};
+      if (expectedIds && attempt < MAX_RETRIES) {
+        const got = Object.keys(tasks);
+        const stale = got.length !== expectedIds.length || expectedIds.some(id => !(id in tasks));
+        if (stale) { retry(); return; }
+      }
+      this._taskStatus = tasks;
+    } catch (e) {
+      if (attempt < MAX_RETRIES) { retry(); return; }
+      console.log("AGS Panel: get_tasks failed", e);
+      this._taskStatus = {};
+    }
+    this.requestUpdate();
+  }
+
+  async _taskAction(taskId, action) {
+    try {
+      const result = await this.hass.callWS({
+        type: `advanced_group_sensor/${action}`,
+        entry_id: this._entryId,
+        task_id: taskId,
+      });
+      this._taskStatus = result.tasks || {};
+    } catch (e) {
+      this._error = `Task update failed: ${e.message}`;
+    }
+    this.requestUpdate();
+  }
+
+  _newTaskId() {
+    // crypto.randomUUID is unavailable on plain http, so keep it simple
+    return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  }
+
+  _addTask() {
+    const tasks = [...(this._config.tasks || [])];
+    tasks.push({
+      id: this._newTaskId(),
+      name: "",
+      repeat: "monthly",
+      interval_days: 1,
+      date: "",
+      lead_days: 0,
+      paused: false,
+    });
+    this._expandedTasks = new Set([...this._expandedTasks, tasks[tasks.length - 1].id]);
+    this._config = { ...this._config, tasks };
+    this.requestUpdate();
+  }
+
+  _setTask(index, key, value) {
+    const tasks = [...(this._config.tasks || [])];
+    tasks[index] = { ...tasks[index], [key]: value };
+    this._config = { ...this._config, tasks };
+    this.requestUpdate();
+  }
+
+  _deleteTask(index) {
+    const tasks = (this._config.tasks || []).filter((_, i) => i !== index);
+    this._config = { ...this._config, tasks };
+    this.requestUpdate();
+  }
+
+  _toggleTaskExpanded(id) {
+    const next = new Set(this._expandedTasks);
+    next.has(id) ? next.delete(id) : next.add(id);
+    this._expandedTasks = next;
+    this.requestUpdate();
+  }
+
+  _taskRepeatText(t) {
+    switch (t.repeat) {
+      case "daily":        return "Every day";
+      case "weekly":       return "Every week";
+      case "every_x_days": return `Every ${t.interval_days || 1} days`;
+      case "monthly":      return "Every month";
+      case "yearly":       return t.date ? `Every year on ${t.date.slice(5)}` : "Every year (set a date)";
+      default:             return t.repeat || "";
+    }
+  }
+
+  _taskStatusText(status) {
+    if (!status || !status.valid) return "Save to activate";
+    const d = status.days_until_due;
+    const when = d === 0 ? "Due today" : d > 0 ? `Due in ${d} day${d === 1 ? "" : "s"}` : `Overdue by ${-d} day${d === -1 ? "" : "s"}`;
+    const last = status.last_done ? ` · last done ${status.last_done}` : " · never done";
+    return `${when} (${status.due_date})${last}`;
+  }
+
+  _renderTasks() {
+    const tasks = this._config.tasks || [];
+    return html`
+      <div class="group-card">
+        <div class="group-header">
+          <span>Task Trackers</span>
+        </div>
+        <div class="group-body">
+          <div class="hint" style="font-style:italic">
+            For things Home Assistant can't see you do: meds, workouts, the bank, birthdays.
+            Each task gets a Done button and a days remaining sensor, created when you save.
+            Press Done and the alert clears until the task comes due again. No helpers or YAML needed.
+          </div>
+          <div class="hint">
+            Garage doors, windows, locks and other entities clear themselves. Use the Individual tab for those.
+          </div>
+          <button class="add-btn" @click="${() => this._addTask()}">
+            <span class="plus">+</span> Add Task
+          </button>
+          ${tasks.length === 0 ? html`<div class="empty-hint">No tasks yet.</div>` : ""}
+          ${tasks.map((t, i) => this._renderTaskCard(t, i))}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderTaskCard(task, index) {
+    const isOpen = this._expandedTasks.has(task.id);
+    const status = this._taskStatus[task.id];
+    const isPaused = task.paused || false;
+    const alerting = status && status.alerting;
+    const saved = !!status;
+
+    return html`
+      <div class="cond-card">
+        <div class="cond-header" @click="${() => this._toggleTaskExpanded(task.id)}">
+          <div class="cond-header-left">
+            <div class="cond-dot ${isPaused ? "paused" : "active"}"></div>
+            <div class="cond-summary">
+              <div class="cond-name">
+                ${task.name || "New Task"}
+                ${isPaused ? html`<span class="paused-pill">paused</span>` : ""}
+                ${alerting ? html`<span class="and-badge">ALERTING</span>` : ""}
+              </div>
+              <div class="cond-sub">${this._taskRepeatText(task)} — ${this._taskStatusText(status)}</div>
+            </div>
+          </div>
+          <div class="cond-header-right">
+            <button class="task-done-btn ${alerting ? "due" : "early"}"
+              ?disabled="${!saved}"
+              title="${!saved
+                ? "Save first"
+                : alerting
+                  ? "Due now: mark done and clear the alert"
+                  : "Not due yet: this covers the next occurrence"}"
+              @click="${e => { e.stopPropagation(); this._taskAction(task.id, "task_done"); }}">
+              ${alerting ? "✓ Done" : "Done early"}
+            </button>
+            ${status && status.can_undo ? html`
+              <button class="delete-btn"
+                title="Undo the last Done press"
+                @click="${e => { e.stopPropagation(); this._taskAction(task.id, "task_undo"); }}">Undo</button>
+            ` : ""}
+            <div class="toggle-unit">
+              <div class="mini-toggle ${isPaused ? "off" : ""}"
+                @click="${e => { e.stopPropagation(); this._setTask(index, "paused", !isPaused); }}"></div>
+            </div>
+            <button class="delete-btn" @click="${e => { e.stopPropagation(); this._deleteTask(index); }}">Delete</button>
+            <span class="chevron">${isOpen ? "▴" : "▾"}</span>
+          </div>
+        </div>
+
+        ${isOpen ? html`
+          <div class="cond-body">
+            <div class="field">
+              <label>Alert Label <span class="optional">— shown in the sensor when due</span></label>
+              <input type="text" .value="${task.name || ""}" placeholder="e.g. Bailey Medication Due"
+                @input="${e => this._setTask(index, "name", e.target.value)}">
+              <div class="hint"><em>Renaming a task renames its Done button and days remaining sensor on save. Their entity ids stay the same, so automations and dashboards keep working. Two tasks with the same label get a _2 suffix.</em></div>
+            </div>
+            <div class="trigger-row">
+              <div class="op-field">
+                <label>Repeat</label>
+                <select class="op-select" @change="${e => this._setTask(index, "repeat", e.target.value)}">
+                  ${[["daily","Daily"],["weekly","Weekly"],["every_x_days","Every X days"],["monthly","Monthly"],["yearly","Yearly"]].map(([v, l]) => html`
+                    <option value="${v}" ?selected="${task.repeat === v}">${l}</option>
+                  `)}
+                </select>
+              </div>
+              ${task.repeat === "every_x_days" ? html`
+                <div class="field" style="flex:1">
+                  <label>Every how many days</label>
+                  <input type="number" min="1" .value="${String(task.interval_days || 1)}"
+                    @input="${e => this._setTask(index, "interval_days", parseInt(e.target.value, 10) || 1)}">
+                </div>
+              ` : ""}
+            </div>
+            <div class="field">
+              <label>
+                ${task.repeat === "yearly"
+                  ? "Date (birthday, anniversary; the year doesn't matter)"
+                  : task.repeat === "monthly"
+                    ? html`Day of the month <span class="optional">(optional, pick any date with that day)</span>`
+                    : html`First due date <span class="optional">(optional, used until the first Done)</span>`}
+              </label>
+              <input type="date" .value="${task.date || ""}"
+                @input="${e => this._setTask(index, "date", e.target.value)}">
+              ${task.repeat === "monthly" ? html`
+                <div class="hint"><em>Set a date to pin the day of the month: the 15th stays the 15th, and a missed one stays overdue until you press Done. Leave it empty to count a month from the last Done, so a late Done pushes the next due date.</em></div>
+              ` : ""}
+              ${task.repeat === "yearly" ? html`
+                <div class="hint"><em>Alerts through the day itself, then rolls to next year.</em></div>
+              ` : ""}
+            </div>
+            <div class="field">
+              <label>Lead days <span class="optional">— start alerting this many days early</span></label>
+              <input type="number" min="0" .value="${String(task.lead_days || 0)}"
+                @input="${e => this._setTask(index, "lead_days", parseInt(e.target.value, 10) || 0)}">
+              <div class="hint"><em>Birthday tip: make two yearly tasks with the same date. "Send Mom a Card" with 7 lead days, and "Call Mom" with 0.</em></div>
+            </div>
+          </div>
+        ` : ""}
       </div>
     `;
   }

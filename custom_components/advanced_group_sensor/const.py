@@ -52,3 +52,21 @@ COLOR_MAP = {
     "Transparent Background":       "transparent",
     "Use YOUR Current Theme Color": "var(--primary-background-color)",
 }
+
+# ── Task trackers ────────────────────────────────────────────────────────────
+# Tasks are things Home Assistant can't see you do (meds, workouts, calling
+# someone). The integration stores the "last done" date itself and creates a
+# Done button + days-remaining sensor per task. No helpers, no template YAML.
+
+TASK_REPEATS = ["daily", "weekly", "every_x_days", "monthly", "yearly"]
+
+TASK_REPEAT_DAYS = {
+    "daily": 1,
+    "weekly": 7,
+}
+
+TASK_STORAGE_VERSION = 1
+
+# Dispatcher signal fired when a task's status may have changed
+# (Done pressed, midnight rollover, tasks edited). Format with entry_id.
+SIGNAL_TASKS_UPDATED = "advanced_group_sensor_tasks_updated_{}"

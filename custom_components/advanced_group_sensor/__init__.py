@@ -1,5 +1,5 @@
 """Advanced Group Sensor integration."""
-# Integration version: 1.0.4
+# Integration version: 1.1.0
 import logging
 import os
 import time
@@ -7,14 +7,22 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.helpers import entity_registry as er
 import voluptuous as vol
 from .const import DOMAIN, COLOR_MAP, RELEVANT_DOMAINS
+from .tasks import TaskManager, normalize_tasks
 
 _LOGGER = logging.getLogger(__name__)
 
 PANEL_TIMESTAMP = int(time.time())
 PANEL_LIT_URL = "/advanced_group_sensor_panel_lit"
 PANEL_LIT_FILENAME = "panel_lit.js"
+
+PLATFORMS = ["sensor", "button"]
+
+
+def _tasks_key(entry_id: str) -> str:
+    return f"{entry_id}_tasks"
 
 
 
@@ -116,9 +124,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, websocket_get_config)
         websocket_api.async_register_command(hass, websocket_get_states)
         websocket_api.async_register_command(hass, websocket_save_config)
+        websocket_api.async_register_command(hass, websocket_get_tasks)
+        websocket_api.async_register_command(hass, websocket_task_done)
+        websocket_api.async_register_command(hass, websocket_task_undo)
         hass.data[DOMAIN]["_ws_registered"] = True
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    # Task trackers: must exist before platforms load (sensor + button read it)
+    if _tasks_key(entry.entry_id) not in hass.data[DOMAIN]:
+        manager = TaskManager(hass, entry.entry_id, entry.data.get("tasks", []))
+        await manager.async_load()
+        hass.data[DOMAIN][_tasks_key(entry.entry_id)] = manager
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     await async_register_ags_panel(hass, entry)
 
@@ -128,9 +145,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     frontend.async_remove_panel(hass, f"advanced-group-sensor-{entry.entry_id}", warn_if_unknown=False)
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        manager = hass.data[DOMAIN].pop(_tasks_key(entry.entry_id), None)
+        if manager:
+            manager.async_stop()
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Entry deleted: remove the stored task last-done dates too."""
+    manager = TaskManager(hass, entry.entry_id, [])
+    await manager.async_remove_store()
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -208,7 +234,41 @@ async def websocket_save_config(hass, connection, msg):
 
     try:
         new_data = {**entry.data, **msg["data"]}
+
+        # Task trackers: clean the list, then decide if entities must be rebuilt.
+        # Adding, removing, or renaming a task changes which button/sensor
+        # entities exist, so the entry is reloaded. Other edits apply live.
+        new_tasks = normalize_tasks(
+            new_data.get("tasks", []), previous=entry.data.get("tasks", [])
+        )
+        new_data["tasks"] = new_tasks
+        old_shape = {(t.get("id"), t.get("name")) for t in normalize_tasks(entry.data.get("tasks", []))}
+        new_shape = {(t["id"], t["name"]) for t in new_tasks}
+        needs_reload = old_shape != new_shape
+
         hass.config_entries.async_update_entry(entry, data=new_data)
+
+        if needs_reload:
+            # Drop registry entries for deleted tasks so they don't linger as "unavailable"
+            removed_ids = {i for i, _ in old_shape} - {t["id"] for t in new_tasks}
+            if removed_ids:
+                ent_reg = er.async_get(hass)
+                for task_id in removed_ids:
+                    for platform, suffix in (("button", "done"), ("sensor", "days")):
+                        uid = (
+                            f"{DOMAIN}_{entry_id}_task_{task_id}_done"
+                            if platform == "button"
+                            else f"advanced_group_sensor_{entry_id}_task_{task_id}_days"
+                        )
+                        if ent_id := ent_reg.async_get_entity_id(platform, DOMAIN, uid):
+                            ent_reg.async_remove(ent_id)
+            hass.config_entries.async_schedule_reload(entry.entry_id)
+            connection.send_result(msg["id"], {"success": True, "tasks": new_tasks, "reloading": True})
+            return
+
+        manager = hass.data.get(DOMAIN, {}).get(_tasks_key(entry_id))
+        if manager:
+            await manager.async_update_tasks(new_tasks)
 
         sensor = hass.data.get(DOMAIN, {}).get(entry_id)
         if sensor and hasattr(sensor, "async_update_settings"):
@@ -237,7 +297,65 @@ async def websocket_save_config(hass, connection, msg):
             }
             await sensor.async_update_settings(settings, d.get("conditions", []))
 
-        connection.send_result(msg["id"], {"success": True})
+        connection.send_result(msg["id"], {"success": True, "tasks": new_tasks})
     except Exception as err:
         _LOGGER.exception("Failed to save config")
         connection.send_error(msg["id"], "save_failed", str(err))
+
+
+# ---------------------------------------------------------------------------
+# Websocket API: task trackers
+# ---------------------------------------------------------------------------
+
+def _get_manager(hass, connection, msg) -> TaskManager | None:
+    entry = hass.config_entries.async_get_entry(msg["entry_id"])
+    if not entry or entry.domain != DOMAIN:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return None
+    manager = hass.data.get(DOMAIN, {}).get(_tasks_key(msg["entry_id"]))
+    if manager is None:
+        connection.send_error(msg["id"], "not_loaded", "Entry not loaded")
+    return manager
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "advanced_group_sensor/get_tasks",
+    vol.Required("entry_id"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_get_tasks(hass, connection, msg):
+    """Return every task with its due date, days remaining, and alert status."""
+    manager = _get_manager(hass, connection, msg)
+    if manager:
+        connection.send_result(msg["id"], {"tasks": manager.all_status()})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "advanced_group_sensor/task_done",
+    vol.Required("entry_id"): str,
+    vol.Required("task_id"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_task_done(hass, connection, msg):
+    """Mark a task done today (same as pressing its Done button)."""
+    manager = _get_manager(hass, connection, msg)
+    if manager:
+        await manager.async_mark_done(msg["task_id"])
+        connection.send_result(msg["id"], {"tasks": manager.all_status()})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "advanced_group_sensor/task_undo",
+    vol.Required("entry_id"): str,
+    vol.Required("task_id"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_task_undo(hass, connection, msg):
+    """Undo the last Done press (pressed by mistake). Restores one step."""
+    manager = _get_manager(hass, connection, msg)
+    if manager:
+        await manager.async_clear_done(msg["task_id"])
+        connection.send_result(msg["id"], {"tasks": manager.all_status()})

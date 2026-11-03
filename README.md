@@ -15,6 +15,27 @@ Advanced Group Sensor watches a set of entity conditions you define and rolls th
 
 Everything is set up in the UI. Add the integration, open its panel from the sidebar, and define your conditions, alert names, and grouping. States load when the panel opens.
 
+## Task Trackers (new in 1.1.0)
+
+For things Home Assistant can't see you do: meds, workouts, paying rent, birthdays. Open the **Tasks** tab in the panel and add a task:
+
+- **Alert Label**: what the sensor shows when it's due (ex: `Bailey Medication Due`)
+- **Repeat**: Daily, Weekly, Every X days, Monthly, or Yearly
+- **Date**:
+  - Yearly: the birthday or anniversary (the year doesn't matter)
+  - Monthly: optional. Set it to pin the day of the month (the 15th stays the 15th, and a missed one stays overdue until Done). Leave it empty to count a month from the last Done
+  - Others: optional first due date
+- **Lead days**: start alerting this many days early
+
+When you save, each task gets two entities:
+
+- `button.<label>_done`: press it when the task is done and the alert clears. One press means you're caught up, even if several were missed
+- `sensor.<label>_days_remaining`: days until due (negative means overdue), handy for countdown cards. Attributes include `due_date`, `last_done` and `alerting`
+
+The integration stores the done dates itself. No helpers, no template YAML. Press Done from a dashboard card, the panel, an automation (`button.press`), or voice. In the panel the button is red **✓ Done** when the task is due and gray **Done early** when it isn't.
+
+Birthday tip: make two yearly tasks with the same date. `Send Mom a Card` with 7 lead days, and `Call Mom` with 0. Each clears on its own Done and both come back next year.
+
 ## Installation (HACS)
 
 1. Add this repository as a custom repository in HACS (category: Integration).
