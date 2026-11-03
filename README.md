@@ -553,7 +553,7 @@ hold_action:
 
 ---
 
-### 3. Advanced — Arbit Glass Card
+### 3. Advanced — Glass Card
 
 <!-- Screenshots of this card (all clear and alert) will be added in the formal release. -->
 
@@ -849,7 +849,7 @@ hold_action:
 
 ---
 
-### Card 3 — Advanced Arbit Glass Card (Attribute Mode)
+### Card 3 — Advanced Glass Card (Attribute Mode)
 
 ```yaml
 type: custom:button-card
