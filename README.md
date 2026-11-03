@@ -733,6 +733,8 @@ Maintained by [@Pjarbit](https://github.com/Pjarbit). Issues: [GitHub Issues](ht
 
 MIT — see [LICENSE](LICENSE.md) for details.
 
+Security and requirements: see [SECURITY.md](SECURITY.md).
+
 ---
 
 ---
