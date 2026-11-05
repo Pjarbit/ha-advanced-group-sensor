@@ -181,7 +181,7 @@ const CN_STYLES = `
     box-shadow: -2px -2px 5px rgba(255,255,255,0.06), 2px -2px 5px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
   }
   .tab.tab-general { padding: 0 10px; }
-  .tab-icon { --mdc-icon-size: 18px; width: 18px; height: 18px; display: inline-flex; }
+  .tab-icon { --mdc-icon-size: 22px; width: 22px; height: 22px; display: inline-flex; }
   .tab:hover { color: #e2e8f0; background: linear-gradient(180deg, #323840, #252b33); }
   .tab.active {
     background: linear-gradient(180deg, #5ab2e8, #2d7ab5);
@@ -207,6 +207,7 @@ const CN_STYLES = `
   .badge.blue   { background: #63b3ed; }
   .badge.teal   { background: rgb(0,168,168); }
   .badge.orange { background: #f6ad55; }
+  .badge.yellow { background: #ffd701; }
   .badge-legend {
     display: flex;
     gap: 12px;
