@@ -15,6 +15,9 @@ Task config (stored in config_entry.data["tasks"]):
                         monthly: pins the day of the month (month/year ignored)
                         others:  optional first due date until the first Done
     lead_days     int   start alerting this many days before the due date
+    alert_time    str   HH:MM (24 h) time of day the task starts alerting on its
+                        first alerting day (due date, or lead_days earlier).
+                        "" means midnight.
     paused        bool
     created       str   YYYY-MM-DD, set once when the task is first saved
 
@@ -47,7 +50,7 @@ from __future__ import annotations
 import calendar
 import logging
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Callable
 
 from homeassistant.core import HomeAssistant, callback
@@ -113,6 +116,22 @@ def last_monthly_fixed(day: int, end: date) -> date:
     return occ
 
 
+def parse_alert_time(value: Any) -> time | None:
+    """Parse "HH:MM" (24 h, seconds allowed and ignored) into a time, or None."""
+    if not value or not isinstance(value, str):
+        return None
+    parts = value.strip().split(":")
+    if len(parts) not in (2, 3):
+        return None
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return time(hour, minute)
+
+
 def is_pinned_monthly(task: dict) -> bool:
     return task.get("repeat") == "monthly" and parse_date(task.get("date")) is not None
 
@@ -162,10 +181,19 @@ def next_due(
 def task_status(
     task: dict,
     last_done: date | None,
-    today: date,
+    now: datetime | date,
     covered_due: date | None = None,
 ) -> dict:
-    """Full status for one task: due date, days until due, alerting flag."""
+    """Full status for one task: due date, days until due, alerting flag.
+
+    `now` is the current local datetime. The date part drives due dates and
+    days until due; the time part is only used to check whether the alert
+    window has started (window start date + the task's alert_time).
+    A plain date is treated as midnight.
+    """
+    if not isinstance(now, datetime):
+        now = datetime.combine(now, time())
+    today = now.date()
     due = next_due(task, last_done, today, covered_due)
     if due is None:
         return {
@@ -177,9 +205,13 @@ def task_status(
         }
 
     lead = max(0, int(task.get("lead_days") or 0))
-    window_start = due - timedelta(days=lead)
+    window_start = datetime.combine(
+        due - timedelta(days=lead),
+        parse_alert_time(task.get("alert_time")) or time(),
+        tzinfo=now.tzinfo,
+    )
 
-    if task.get("paused") or today < window_start:
+    if task.get("paused") or now < window_start:
         alerting = False
     elif task.get("repeat") == "yearly":
         # After the day, next_due has rolled to next year, so a missed
@@ -249,6 +281,7 @@ def normalize_tasks(
         if repeat == "yearly" and task_date is None:
             _LOGGER.warning("Skipping yearly task without a date: %s", name)
             continue
+        alert_time = parse_alert_time(raw.get("alert_time"))
         created = (
             parse_date(raw.get("created"))
             or parse_date(prev_created.get(task_id))
@@ -261,6 +294,7 @@ def normalize_tasks(
             "interval_days": interval,
             "date": task_date.isoformat() if task_date else "",
             "lead_days": lead,
+            "alert_time": alert_time.strftime("%H:%M") if alert_time else "",
             "paused": bool(raw.get("paused", False)),
             "created": created.isoformat(),
         })
@@ -281,6 +315,7 @@ class TaskManager:
         self._covered_due: dict[str, str] = {}
         self._undo: dict[str, dict] = {}
         self._unsub_midnight: Callable[[], None] | None = None
+        self._unsub_alert_times: list[Callable[[], None]] = []
 
     @property
     def signal(self) -> str:
@@ -295,15 +330,41 @@ class TaskManager:
         self._unsub_midnight = async_track_time_change(
             self.hass, self._midnight, hour=0, minute=0, second=5
         )
+        self._register_alert_times()
+
+    @callback
+    def _register_alert_times(self) -> None:
+        """One refresh per distinct alert_time, so tasks start alerting on time."""
+        self._unregister_alert_times()
+        times = {
+            t for t in (parse_alert_time(task.get("alert_time")) for task in self.tasks) if t
+        }
+        for t in sorted(times):
+            self._unsub_alert_times.append(
+                async_track_time_change(
+                    self.hass, self._alert_time, hour=t.hour, minute=t.minute, second=0
+                )
+            )
+
+    @callback
+    def _unregister_alert_times(self) -> None:
+        for unsub in self._unsub_alert_times:
+            unsub()
+        self._unsub_alert_times = []
 
     @callback
     def async_stop(self) -> None:
         if self._unsub_midnight:
             self._unsub_midnight()
             self._unsub_midnight = None
+        self._unregister_alert_times()
 
     @callback
     def _midnight(self, _now) -> None:
+        self._notify()
+
+    @callback
+    def _alert_time(self, _now) -> None:
         self._notify()
 
     @callback
@@ -326,26 +387,26 @@ class TaskManager:
     def covered_due(self, task_id: str) -> date | None:
         return parse_date(self._covered_due.get(task_id))
 
-    def _status_for(self, task: dict, today: date) -> dict:
+    def _status_for(self, task: dict, now: datetime) -> dict:
         return task_status(
-            task, self.last_done(task["id"]), today, self.covered_due(task["id"])
+            task, self.last_done(task["id"]), now, self.covered_due(task["id"])
         )
 
     def status(self, task_id: str) -> dict | None:
         task = self.get_task(task_id)
         if task is None:
             return None
-        return self._status_for(task, dt_util.now().date())
+        return self._status_for(task, dt_util.now())
 
     def alerting_labels(self) -> list[str]:
         """Labels of every task that should be alerting right now."""
-        today = dt_util.now().date()
-        return [t["name"] for t in self.tasks if self._status_for(t, today)["alerting"]]
+        now = dt_util.now()
+        return [t["name"] for t in self.tasks if self._status_for(t, now)["alerting"]]
 
     def all_status(self) -> dict[str, dict]:
-        today = dt_util.now().date()
+        now = dt_util.now()
         return {
-            t["id"]: {**t, **self._status_for(t, today), "can_undo": self.can_undo(t["id"])}
+            t["id"]: {**t, **self._status_for(t, now), "can_undo": self.can_undo(t["id"])}
             for t in self.tasks
         }
 
@@ -419,6 +480,7 @@ class TaskManager:
             # Pinned monthly day change keeps covered_due on purpose: it marks
             # "handled up to this date", so the new day starts after it instead
             # of back-filling every missed month since `created`.
+        self._register_alert_times()
         await self._save()
         self._notify()
 

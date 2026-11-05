@@ -1,5 +1,5 @@
 /**
- * Advanced Group Sensor Panel v1.1.0
+ * Advanced Group Sensor Panel v1.1.2
  * Style injection + force visibility fix for card-mod compatibility
  */
 
@@ -42,15 +42,15 @@ if (typeof css  !== "function") css  = (strings, ...values) => {
 };
 
 try {
-  console.log('%cAdvanced Group Sensor v1.1.0 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.1.2 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
   definePanel();
-  console.log('%cAdvanced Group Sensor v1.1.0 → Successfully registered', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.1.2 → Successfully registered', 'color:#39FF14; font-weight:bold');
 } catch (e) {
   console.error('🚨 Advanced Group Sensor PANEL CRASHED during initialization:', e);
   const errorHTML = `
     <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e2535;color:#fc8181;padding:30px 40px;border-radius:16px;border:3px solid #fc8181;z-index:999999;font-family:sans-serif;max-width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.8);">
       <h2 style="margin:0 0 16px 0;color:#fc8181">Advanced Group Sensor Panel Failed to Load</h2>
-      <p style="margin:8px 0">Version 1.1.0</p>
+      <p style="margin:8px 0">Version 1.1.2</p>
       <pre style="background:#000;color:#fff;padding:12px;text-align:left;font-size:13px;overflow:auto;max-height:300px;">${e.message}\n${e.stack ? e.stack.substring(0,800) : ''}</pre>
       <button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#63b3ed;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:600">Reload Page</button>
     </div>
@@ -180,6 +180,9 @@ const CN_STYLES = `
     white-space: nowrap;
     box-shadow: -2px -2px 5px rgba(255,255,255,0.06), 2px -2px 5px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
   }
+  .tab.tab-general { padding: 0 10px; }
+  .hint-icon { --mdc-icon-size: 15px; width: 15px; height: 15px; display: inline-flex; vertical-align: -2px; }
+  .tab-icon { --mdc-icon-size: 22px; width: 22px; height: 22px; display: inline-flex; }
   .tab:hover { color: #e2e8f0; background: linear-gradient(180deg, #323840, #252b33); }
   .tab.active {
     background: linear-gradient(180deg, #5ab2e8, #2d7ab5);
@@ -205,6 +208,7 @@ const CN_STYLES = `
   .badge.blue   { background: #63b3ed; }
   .badge.teal   { background: rgb(0,168,168); }
   .badge.orange { background: #f6ad55; }
+  .badge.yellow { background: #ffd701; }
   .badge-legend {
     display: flex;
     gap: 12px;
@@ -1577,7 +1581,7 @@ class AdvancedGroupSensorPanel extends LitElement {
       const excluded = new Set(sg.entity_filter_exclude || []);
       total += this._matchedEntities(sg).filter(([id]) => !excluded.has(id)).length;
     }
-    return total;
+    return total + this._taskCount;
   }
 
   _buildOverviewRows() {
@@ -1767,26 +1771,26 @@ class AdvancedGroupSensorPanel extends LitElement {
           </div>
 
           <div class="tabs">
-            <button class="tab ${this._activeTab === "general" ? "active" : ""}"
+            <button class="tab tab-general ${this._activeTab === "general" ? "active" : ""}"
               @click="${() => { this._activeTab = "general"; this.requestUpdate(); }}">
               General
             </button>
-            <button class="tab ${this._activeTab === "individual" ? "active" : ""}"
+            <button class="tab ${this._activeTab === "individual" ? "active" : ""}" title="Individual" aria-label="Individual"
               @click="${() => { this._activeTab = "individual"; this.requestUpdate(); }}">
-              Individual
+              <ha-icon class="tab-icon" icon="mdi:radiobox-marked"></ha-icon>
               <span class="badge blue" title="${this._individualCount} Active">${this._individualCount}</span>
               ${this._individualPausedCount > 0 ? html`<span class="badge orange" title="${this._individualPausedCount} Paused">${this._individualPausedCount}</span>` : ""}
             </button>
-            <button class="tab ${this._activeTab === "smartgroups" ? "active" : ""}"
+            <button class="tab ${this._activeTab === "smartgroups" ? "active" : ""}" title="Groups" aria-label="Groups"
               @click="${() => { this._activeTab = "smartgroups"; this.requestUpdate(); }}">
-              Smart Groups
+              <ha-icon class="tab-icon" icon="mdi:google-circles-communities"></ha-icon>
               <span class="badge blue" title="${this._smartGroupCount} Groups">${this._smartGroupCount}</span>
               <span class="badge teal" title="${this._smartGroupEntityCount} Entities">${this._smartGroupEntityCount}</span>
               ${this._smartGroupPausedCount > 0 ? html`<span class="badge orange" title="${this._smartGroupPausedCount} Paused">${this._smartGroupPausedCount}</span>` : ""}
             </button>
-            <button class="tab ${this._activeTab === "tasks" ? "active" : ""}"
+            <button class="tab ${this._activeTab === "tasks" ? "active" : ""}" title="Tasks" aria-label="Tasks"
               @click="${() => { this._activeTab = "tasks"; this.requestUpdate(); }}">
-              Tasks
+              <ha-icon class="tab-icon" icon="mdi:calendar-check"></ha-icon>
               <span class="badge blue" title="${this._taskCount} Tasks">${this._taskCount}</span>
               ${this._taskAlertCount > 0 ? html`<span class="badge yellow" title="${this._taskAlertCount} Alerting">${this._taskAlertCount}</span>` : ""}
             </button>
@@ -1813,7 +1817,7 @@ class AdvancedGroupSensorPanel extends LitElement {
           </div>
 
           <div class="dialog-footer">
-            <span class="version-stamp">pja v1.1.0</span>
+            <span class="version-stamp">pja v1.1.2</span>
             ${this._error ? html`<span class="error-msg">${this._error}</span>` : ""}
             ${this._saved ? html`<span class="saved-msg">✓ Saved</span>` : ""}
             <div class="footer-buttons">
@@ -2259,6 +2263,7 @@ class AdvancedGroupSensorPanel extends LitElement {
       interval_days: 1,
       date: "",
       lead_days: 0,
+      alert_time: "",
       paused: false,
     });
     this._expandedTasks = new Set([...this._expandedTasks, tasks[tasks.length - 1].id]);
@@ -2297,12 +2302,40 @@ class AdvancedGroupSensorPanel extends LitElement {
     }
   }
 
-  _taskStatusText(status) {
-    if (!status || !status.valid) return "Save to activate";
+  // Short repeat word: "weekly", "every 3d". capital=true for the Tasks tab.
+  _taskRepeatShort(t, capital = false) {
+    const word = {
+      daily: "daily", weekly: "weekly", monthly: "monthly", yearly: "yearly",
+      every_x_days: `every ${t.interval_days || 1}d`,
+    }[t.repeat] || t.repeat || "";
+    return capital && word ? word[0].toUpperCase() + word.slice(1) : word;
+  }
+
+  // How far away a task is: "today", "in 3 days", "in 2 months", "in 1 year",
+  // "3 days late". Days up to 60, then months, then years from 12 months on.
+  // Overdue is always days.
+  _taskWhenText(status) {
+    if (!status || !status.valid) return "Unsaved";
     const d = status.days_until_due;
-    const when = d === 0 ? "Due today" : d > 0 ? `Due in ${d} day${d === 1 ? "" : "s"}` : `Overdue by ${-d} day${d === -1 ? "" : "s"}`;
-    const last = status.last_done ? ` · last done ${status.last_done}` : " · never done";
-    return `${when} (${status.due_date})${last}`;
+    const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+    if (d === 0) return "today";
+    if (d < 0) return `${plural(-d, "day")} late`;
+    if (d <= 60) return `in ${plural(d, "day")}`;
+    const months = Math.round(d / 30.44);
+    if (months < 12) return `in ${plural(months, "month")}`;
+    return `in ${plural(Math.round(d / 365.25), "year")}`;
+  }
+
+  // "2026-11-10" -> "Nov 10" (local date, no timezone shift)
+  _shortDate(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-").map(Number);
+    const lang = this._hass?.locale?.language || undefined;
+    return new Date(y, m - 1, d).toLocaleDateString(lang, { month: "short", day: "numeric" });
+  }
+
+  _taskStatusText(task, status) {
+    return `${this._taskRepeatShort(task, true)} · ${this._taskWhenText(status)}`;
   }
 
   _renderTasks() {
@@ -2319,7 +2352,7 @@ class AdvancedGroupSensorPanel extends LitElement {
             Press Done and the alert clears until the task comes due again. No helpers or YAML needed.
           </div>
           <div class="hint">
-            Garage doors, windows, locks and other entities clear themselves. Use the Individual tab for those.
+            <span>Garage doors, windows, locks and other entities clear themselves. Use the Individual <ha-icon class="hint-icon" icon="mdi:radiobox-marked"></ha-icon> tab for those.</span>
           </div>
           <button class="add-btn" @click="${() => this._addTask()}">
             <span class="plus">+</span> Add Task
@@ -2349,7 +2382,7 @@ class AdvancedGroupSensorPanel extends LitElement {
                 ${isPaused ? html`<span class="paused-pill">paused</span>` : ""}
                 ${alerting ? html`<span class="and-badge">ALERTING</span>` : ""}
               </div>
-              <div class="cond-sub">${this._taskRepeatText(task)} — ${this._taskStatusText(status)}</div>
+              <div class="cond-sub">${this._taskStatusText(task, status)}</div>
             </div>
           </div>
           <div class="cond-header-right">
@@ -2379,6 +2412,9 @@ class AdvancedGroupSensorPanel extends LitElement {
 
         ${isOpen ? html`
           <div class="cond-body">
+            ${status && status.valid ? html`
+              <div class="hint">Due ${this._shortDate(status.due_date)} · ${status.last_done ? `last done ${this._shortDate(status.last_done)}` : "never done"}</div>
+            ` : ""}
             <div class="field">
               <label>Alert Label <span class="optional">— shown in the sensor when due</span></label>
               <input type="text" .value="${task.name || ""}" placeholder="e.g. Bailey Medication Due"
@@ -2425,6 +2461,12 @@ class AdvancedGroupSensorPanel extends LitElement {
                 @input="${e => this._setTask(index, "lead_days", parseInt(e.target.value, 10) || 0)}">
               <div class="hint"><em>Birthday tip: make two yearly tasks with the same date. "Send Mom a Card" with 7 lead days, and "Call Mom" with 0.</em></div>
             </div>
+            <div class="field">
+              <label>Alert time <span class="optional">(optional)</span></label>
+              <input type="time" .value="${task.alert_time || ""}"
+                @input="${e => this._setTask(index, "alert_time", e.target.value)}">
+              <div class="hint"><em>Time of day the task starts alerting. Leave blank for midnight.</em></div>
+            </div>
           </div>
         ` : ""}
       </div>
@@ -2438,7 +2480,7 @@ class AdvancedGroupSensorPanel extends LitElement {
     return html`
       <div class="group-card">
         <div class="group-header" style="display:flex;align-items:center;justify-content:space-between">
-          <span>Smart Groups</span>
+          <span>Groups</span>
           <button class="expand-btn" @click="${() => this._toggleAllSmart()}">
             ${groups.some(({ i }) => this._expandedConditions.has(i)) ? "Collapse All" : "Expand All"}
           </button>
@@ -2726,8 +2768,23 @@ class AdvancedGroupSensorPanel extends LitElement {
     `;
   }
 
+  _buildTaskOverviewRows() {
+    return (this._config.tasks || []).map(task => {
+      const status = this._taskStatus[task.id];
+      const paused = !!task.paused;
+      return {
+        name: task.name || "New Task",
+        state: paused ? "Paused" : !status ? "Unsaved" : this._taskWhenText(status),
+        condition: this._taskRepeatShort(task),
+        paused,
+        alert: !paused && !!(status && status.alerting),
+      };
+    });
+  }
+
   _renderOverview() {
     const rows = this._buildOverviewRows();
+    const taskRows = this._buildTaskOverviewRows();
     const domainMap = new Map();
     for (const row of rows) {
       if (!domainMap.has(row.domain)) domainMap.set(row.domain, []);
@@ -2742,8 +2799,8 @@ class AdvancedGroupSensorPanel extends LitElement {
         <span class="overview-key-item"><span class="overview-dot ok"></span> OK</span>
       </div>
 
-      ${rows.length === 0 ? html`
-        <div class="empty-hint" style="padding:12px 4px;font-style:italic">No monitored entities yet. Add conditions in the Individual or Groups tabs.</div>
+      ${rows.length === 0 && taskRows.length === 0 ? html`
+        <div class="empty-hint" style="padding:12px 4px;font-style:italic">No monitored entities yet. Add conditions in the Individual <ha-icon class="hint-icon" icon="mdi:radiobox-marked"></ha-icon> or Groups <ha-icon class="hint-icon" icon="mdi:google-circles-communities"></ha-icon> tabs.</div>
       ` : html`
         <div class="overview-scroll-wrap">
           <div class="overview-container">
@@ -2768,6 +2825,21 @@ class AdvancedGroupSensorPanel extends LitElement {
                 </div>
               `)}
             `)}
+            ${taskRows.length ? html`
+              <div class="overview-domain-divider">Tasks</div>
+              ${taskRows.map(row => html`
+                <div class="overview-row ${row.alert ? "row-alert" : row.paused ? "row-paused" : "row-ok"}">
+                  <div class="overview-entity-cell">
+                    <span class="overview-entity-name">${row.name}</span>
+                    <span class="overview-source-pill">
+                      <span class="overview-source-type">Task</span>
+                    </span>
+                  </div>
+                  <span class="overview-state">${row.state}</span>
+                  <span class="overview-condition">${row.condition}</span>
+                </div>
+              `)}
+            ` : ""}
           </div>
         </div>
       `}

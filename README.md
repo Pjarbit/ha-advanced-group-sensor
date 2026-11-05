@@ -31,7 +31,7 @@ AGS is the successor to Combined Notifications. If you are coming from Combined 
   - [General Tab](#general-tab)
   - [Individual Conditions](#individual-conditions)
   - [Dynamic Labels — Live Values in Your Alerts](#-dynamic-labels--live-values-in-your-alerts)
-  - [Smart Groups](#smart-groups)
+  - [Groups](#groups)
   - [Task Trackers](#-task-trackers)
   - [Overview Tab](#overview-tab)
   - [Backup & Restore and Duplicate Sensor](#-backup--restore-and-duplicate-sensor)
@@ -55,7 +55,7 @@ AGS is the successor to Combined Notifications. If you are coming from Combined 
 
 - Monitor unlimited entities with flexible alert conditions
 - **Individual conditions** — monitor specific entities one at a time
-- **Smart Groups** — bulk-add entities by keyword (e.g. all `door`, all `battery`, all `light`)
+- **Groups** — bulk-add entities by keyword (e.g. all `door`, all `battery`, all `light`)
 - **"AND" conditions** — is the car unlocked AND not in the garage? Is the back door open AND nobody is home? Get an alert only when both are true
 - **Pause** conditions without deleting them. A sensor goes bad? Pause it and everything else keeps working
 - **Live Sensor State** shown right in the panel — no more hunting Developer Tools to figure out if your sensor says `open`, `Open`, `true`, or `1`
@@ -95,7 +95,7 @@ Requires Home Assistant 2024.12.0 or newer.
 1. Go to **Settings → Devices & Services → Add Integration → Advanced Group Sensor**
 2. Enter your **Sensor Name** and an optional **Friendly Display Name**
 3. Open **Settings → Devices & Services → Advanced Group Sensor → Configure**, then click **Open configuration panel**
-4. Add conditions, Smart Groups and tasks, and set your colors and icons
+4. Add conditions, Groups and tasks, and set your colors and icons
 5. Click **Save Changes**
 
 To modify settings later — add/delete entities, change triggers, update colors/icons — go back to **Settings → Devices & Services → Advanced Group Sensor → Configure**. No YAML or restart required.
@@ -117,7 +117,7 @@ d. Change the sensor name. That's it — Enjoy!
 
 ## 🖥️ Configuration Panel
 
-The panel has five tabs: **General**, **Individual**, **Smart Groups**, **Tasks** and **Overview**. Badges on each tab show how many items are active, paused or alerting.
+The panel has five tabs: **General**, **Individual**, **Groups**, **Tasks** and **Overview**. Badges on each tab show how many items are active, paused or alerting.
 
 > The screenshots below were taken in Combined Notifications. The AGS panel is laid out the same way; only the header and the extra tabs differ.
 
@@ -189,9 +189,9 @@ This renders **"Lightning 5 Miles North"**, handles the singular "1 Mile," round
 
 ---
 
-### Smart Groups
+### Groups
 
-Smart Groups bulk-add every entity matching a keyword. Open the configuration panel after adding new devices to include them in an existing group.
+Groups bulk-add every entity matching a keyword. Open the configuration panel after adding new devices to include them in an existing group.
 
 ![Smart Group Expanded](media/04_smart_group.png)
 
