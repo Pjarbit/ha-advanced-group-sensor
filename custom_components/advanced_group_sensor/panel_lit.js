@@ -181,6 +181,7 @@ const CN_STYLES = `
     box-shadow: -2px -2px 5px rgba(255,255,255,0.06), 2px -2px 5px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
   }
   .tab.tab-general { padding: 0 10px; }
+  .hint-icon { --mdc-icon-size: 15px; width: 15px; height: 15px; display: inline-flex; vertical-align: -2px; }
   .tab-icon { --mdc-icon-size: 22px; width: 22px; height: 22px; display: inline-flex; }
   .tab:hover { color: #e2e8f0; background: linear-gradient(180deg, #323840, #252b33); }
   .tab.active {
@@ -2351,7 +2352,7 @@ class AdvancedGroupSensorPanel extends LitElement {
             Press Done and the alert clears until the task comes due again. No helpers or YAML needed.
           </div>
           <div class="hint">
-            Garage doors, windows, locks and other entities clear themselves. Use the Individual tab for those.
+            <span>Garage doors, windows, locks and other entities clear themselves. Use the Individual <ha-icon class="hint-icon" icon="mdi:radiobox-marked"></ha-icon> tab for those.</span>
           </div>
           <button class="add-btn" @click="${() => this._addTask()}">
             <span class="plus">+</span> Add Task
@@ -2799,7 +2800,7 @@ class AdvancedGroupSensorPanel extends LitElement {
       </div>
 
       ${rows.length === 0 && taskRows.length === 0 ? html`
-        <div class="empty-hint" style="padding:12px 4px;font-style:italic">No monitored entities yet. Add conditions in the Individual or Groups tabs.</div>
+        <div class="empty-hint" style="padding:12px 4px;font-style:italic">No monitored entities yet. Add conditions in the Individual <ha-icon class="hint-icon" icon="mdi:radiobox-marked"></ha-icon> or Groups <ha-icon class="hint-icon" icon="mdi:google-circles-communities"></ha-icon> tabs.</div>
       ` : html`
         <div class="overview-scroll-wrap">
           <div class="overview-container">
