@@ -181,6 +181,7 @@ const CN_STYLES = `
     box-shadow: -2px -2px 5px rgba(255,255,255,0.06), 2px -2px 5px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
   }
   .tab.tab-general { padding: 0 10px; }
+  .tab-icon { --mdc-icon-size: 18px; width: 18px; height: 18px; display: inline-flex; }
   .tab:hover { color: #e2e8f0; background: linear-gradient(180deg, #323840, #252b33); }
   .tab.active {
     background: linear-gradient(180deg, #5ab2e8, #2d7ab5);
@@ -1772,22 +1773,22 @@ class AdvancedGroupSensorPanel extends LitElement {
               @click="${() => { this._activeTab = "general"; this.requestUpdate(); }}">
               General
             </button>
-            <button class="tab ${this._activeTab === "individual" ? "active" : ""}"
+            <button class="tab ${this._activeTab === "individual" ? "active" : ""}" title="Individual" aria-label="Individual"
               @click="${() => { this._activeTab = "individual"; this.requestUpdate(); }}">
-              Individual
+              <ha-icon class="tab-icon" icon="mdi:radiobox-marked"></ha-icon>
               <span class="badge blue" title="${this._individualCount} Active">${this._individualCount}</span>
               ${this._individualPausedCount > 0 ? html`<span class="badge orange" title="${this._individualPausedCount} Paused">${this._individualPausedCount}</span>` : ""}
             </button>
-            <button class="tab ${this._activeTab === "smartgroups" ? "active" : ""}"
+            <button class="tab ${this._activeTab === "smartgroups" ? "active" : ""}" title="Groups" aria-label="Groups"
               @click="${() => { this._activeTab = "smartgroups"; this.requestUpdate(); }}">
-              Groups
+              <ha-icon class="tab-icon" icon="mdi:google-circles-extended"></ha-icon>
               <span class="badge blue" title="${this._smartGroupCount} Groups">${this._smartGroupCount}</span>
               <span class="badge teal" title="${this._smartGroupEntityCount} Entities">${this._smartGroupEntityCount}</span>
               ${this._smartGroupPausedCount > 0 ? html`<span class="badge orange" title="${this._smartGroupPausedCount} Paused">${this._smartGroupPausedCount}</span>` : ""}
             </button>
-            <button class="tab ${this._activeTab === "tasks" ? "active" : ""}"
+            <button class="tab ${this._activeTab === "tasks" ? "active" : ""}" title="Tasks" aria-label="Tasks"
               @click="${() => { this._activeTab = "tasks"; this.requestUpdate(); }}">
-              Tasks
+              <ha-icon class="tab-icon" icon="mdi:calendar-check"></ha-icon>
               <span class="badge blue" title="${this._taskCount} Tasks">${this._taskCount}</span>
               ${this._taskAlertCount > 0 ? html`<span class="badge yellow" title="${this._taskAlertCount} Alerting">${this._taskAlertCount}</span>` : ""}
             </button>
