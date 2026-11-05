@@ -1,5 +1,5 @@
 """Advanced Group Sensor integration."""
-# Integration version: 1.1.0
+# Integration version: 1.1.2
 import logging
 import os
 import time
