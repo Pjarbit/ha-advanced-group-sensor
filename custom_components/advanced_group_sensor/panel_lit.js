@@ -1781,7 +1781,7 @@ class AdvancedGroupSensorPanel extends LitElement {
             </button>
             <button class="tab ${this._activeTab === "smartgroups" ? "active" : ""}" title="Groups" aria-label="Groups"
               @click="${() => { this._activeTab = "smartgroups"; this.requestUpdate(); }}">
-              <ha-icon class="tab-icon" icon="mdi:google-circles-extended"></ha-icon>
+              <ha-icon class="tab-icon" icon="mdi:google-circles-communities"></ha-icon>
               <span class="badge blue" title="${this._smartGroupCount} Groups">${this._smartGroupCount}</span>
               <span class="badge teal" title="${this._smartGroupEntityCount} Entities">${this._smartGroupEntityCount}</span>
               ${this._smartGroupPausedCount > 0 ? html`<span class="badge orange" title="${this._smartGroupPausedCount} Paused">${this._smartGroupPausedCount}</span>` : ""}
