@@ -1,5 +1,5 @@
 /**
- * Advanced Group Sensor Panel v1.1.6
+ * Advanced Group Sensor Panel v1.1.8
  * Style injection + force visibility fix for card-mod compatibility
  */
 
@@ -47,15 +47,15 @@ if (typeof css  !== "function") css  = (strings, ...values) => {
 };
 
 try {
-  console.log('%cAdvanced Group Sensor v1.1.6 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.1.8 → Starting definePanel()', 'color:#39FF14; font-weight:bold');
   definePanel();
-  console.log('%cAdvanced Group Sensor v1.1.6 → Successfully registered', 'color:#39FF14; font-weight:bold');
+  console.log('%cAdvanced Group Sensor v1.1.8 → Successfully registered', 'color:#39FF14; font-weight:bold');
 } catch (e) {
   console.error('🚨 Advanced Group Sensor PANEL CRASHED during initialization:', e);
   const errorHTML = `
     <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e2535;color:#fc8181;padding:30px 40px;border-radius:16px;border:3px solid #fc8181;z-index:999999;font-family:sans-serif;max-width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.8);">
       <h2 style="margin:0 0 16px 0;color:#fc8181">Advanced Group Sensor Panel Failed to Load</h2>
-      <p style="margin:8px 0">Version 1.1.6</p>
+      <p style="margin:8px 0">Version 1.1.8</p>
       <pre style="background:#000;color:#fff;padding:12px;text-align:left;font-size:13px;overflow:auto;max-height:300px;">${e.message}\n${e.stack ? e.stack.substring(0,800) : ''}</pre>
       <button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#63b3ed;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:600">Reload Page</button>
     </div>
@@ -584,6 +584,11 @@ const CN_STYLES = `
     background: rgba(104,211,145,0.08);
     border: 1px solid rgba(104,211,145,0.15);
     border-radius: 4px;
+  }
+  .state-val.alerting {
+    color: #fc8181;
+    background: rgba(252,129,129,0.2);
+    border-color: rgba(252,129,129,0.5);
   }
   .entity-item.excluded .state-val {
     color: #f6ad55;
@@ -1822,7 +1827,7 @@ class AdvancedGroupSensorPanel extends LitElement {
           </div>
 
           <div class="dialog-footer">
-            <span class="version-stamp">pja v1.1.6</span>
+            <span class="version-stamp">pja v1.1.8</span>
             ${this._error ? html`<span class="error-msg">${this._error}</span>` : ""}
             ${this._saved ? html`<span class="saved-msg">✓ Saved</span>` : ""}
             <div class="footer-buttons">
@@ -2735,6 +2740,9 @@ class AdvancedGroupSensorPanel extends LitElement {
                 ${visibleList.map(([entityId, state]) => {
                   const overrides = condition.entity_label_overrides || {};
                   const customLabel = overrides[entityId] || "";
+                  // Same check the Overview tab uses: red when included and matching the alert rule
+                  const isAlerting = !condition.paused && !excluded.has(entityId)
+                    && this._evalCondition(this._currentState(entityId), condition.operator, condition.trigger_value);
                   return html`
                     <div class="entity-item ${excluded.has(entityId) ? "excluded" : ""}">
                       <div class="entity-info">
@@ -2752,7 +2760,7 @@ class AdvancedGroupSensorPanel extends LitElement {
                         ` : ""}
                       </div>
                       <div class="entity-right">
-                        <span class="state-val">${state.state}</span>
+                        <span class="state-val ${isAlerting ? "alerting" : ""}">${state.state}</span>
                         <div class="mini-toggle ${excluded.has(entityId) ? "off" : ""}"
                           @click="${() => this._toggleEntityExclude(index, entityId)}"></div>
                       </div>
