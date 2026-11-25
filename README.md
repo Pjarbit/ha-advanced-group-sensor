@@ -228,6 +228,12 @@ Birthday tip: make two yearly tasks with the same date. `Send Mom a Card` with 7
 
 #### Task cards — press and hold to mark Done
 
+| All clear | Alerting, with a reset button |
+|---|---|
+| ![All clear](media/package_all_clear.png) | ![Reset](media/package_alert.png) |
+
+The pictures above show the idea: a reset button beside the sensor card. When something needs attention, the sensor and the button turn red; hold the button to reset, and both go back to blue-gray. The same pattern works for **task items** (meds, trash day, call Mom) and **dated items** (battery changes, filter swaps, renewals): each is a task with a due date, and holding the button marks it Done and starts the countdown again.
+
 Both examples need [button-card](https://github.com/custom-cards/button-card). The card turns red while the task is alerting (this follows lead days and the alert time), shows the days left, and a **press and hold** presses the task's Done button. Tap does nothing, so a stray tap won't reset anything.
 
 **Single task.** Replace `call_mom` with your task's name as it appears in its entity IDs (`sensor.<task>_days_remaining` and `button.<task>_done`), and pick a name and icon.
@@ -252,13 +258,14 @@ styles:
   card:
     - background: >
         [[[ return entity.attributes.alerting
-          ? "linear-gradient(90deg, #BE1717 0%, #9B1010 12%, #881010 40%, #840F0F 60%, #9F1111 88%, #C41414 100%)"
+          ? "linear-gradient(90deg, #BE1717 0%, #B01616 2%, #AB1313 3%, #A61212 5%, #A01111 8%, #9B1010 12%, #971010 16%, #921212 20%, #8E1010 25%, #8C1010 30%, #891010 35%, #881010 40%, #840F0F 50%, #840F0F 60%, #861010 65%, #881010 70%, #8A1010 75%, #901010 80%, #971010 84%, #9F1111 88%, #A81212 92%, #AF1212 95%, #B61212 97%, #B91313 98%, #C41414 100%)"
           : "linear-gradient(180deg, #293A48, #15232F)"; ]]]
-    - border-radius: 12px
+    - border-radius: 10px
     - box-shadow: >
         [[[ return entity.attributes.alerting
-          ? "0 3px 6px 0 rgba(0,0,0,0.60), inset 3px 0 4px -2px rgba(255,165,165,0.70), inset 0 3px 4px -1px rgba(255,175,175,0.75)"
-          : "0 0 8px 1px rgba(0,0,0,0.75), inset 0 0 0 1px rgba(110,150,180,0.30), inset 0 2px 0 rgba(150,190,220,0.30)"; ]]]
+          ? "0 3px 6px 0 rgba(0, 0, 0, 0.60), inset 0 -3px 5px -1px rgba(35, 0, 0, 0.60), inset 0 -12px 16px -8px rgba(130, 15, 15, 0.40), inset 3px 0 4px -2px rgba(255, 165, 165, 0.70), inset 0 3px 4px -1px rgba(255, 175, 175, 0.75)"
+          : "0 4px 8px 0 rgba(0, 0, 0, 0.65), inset 3px 0 5px -2px rgba(150, 185, 210, 0.50), inset 0 3px 4px -1px rgba(150, 185, 210, 0.55)"; ]]]
+    - overflow: hidden
     - padding: 15px
   name:
     - font-weight: bold
@@ -284,6 +291,7 @@ filter:
       entity_id: sensor.*_days_remaining
       options:
         type: custom:button-card
+        icon: mdi:calendar-check
         show_state: true
         state_display: >
           [[[ const d = Number(entity.state);
@@ -300,9 +308,14 @@ filter:
           card:
             - background: >
                 [[[ return entity.attributes.alerting
-                  ? "linear-gradient(90deg, #BE1717 0%, #881010 40%, #840F0F 60%, #C41414 100%)"
+                  ? "linear-gradient(90deg, #BE1717 0%, #B01616 2%, #AB1313 3%, #A61212 5%, #A01111 8%, #9B1010 12%, #971010 16%, #921212 20%, #8E1010 25%, #8C1010 30%, #891010 35%, #881010 40%, #840F0F 50%, #840F0F 60%, #861010 65%, #881010 70%, #8A1010 75%, #901010 80%, #971010 84%, #9F1111 88%, #A81212 92%, #AF1212 95%, #B61212 97%, #B91313 98%, #C41414 100%)"
                   : "linear-gradient(180deg, #293A48, #15232F)"; ]]]
-            - border-radius: 12px
+            - border-radius: 10px
+            - box-shadow: >
+                [[[ return entity.attributes.alerting
+                  ? "0 3px 6px 0 rgba(0, 0, 0, 0.60), inset 0 -3px 5px -1px rgba(35, 0, 0, 0.60), inset 0 -12px 16px -8px rgba(130, 15, 15, 0.40), inset 3px 0 4px -2px rgba(255, 165, 165, 0.70), inset 0 3px 4px -1px rgba(255, 175, 175, 0.75)"
+                  : "0 4px 8px 0 rgba(0, 0, 0, 0.65), inset 3px 0 5px -2px rgba(150, 185, 210, 0.50), inset 0 3px 4px -1px rgba(150, 185, 210, 0.55)"; ]]]
+            - overflow: hidden
             - padding: 15px
           name:
             - font-weight: bold
