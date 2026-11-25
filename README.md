@@ -79,7 +79,7 @@ AGS is the successor to Combined Notifications. If you are coming from Combined 
 
 ## 📦 Installation
 
-1. Open **MARKETPLACE** which is under the SYSTEM MENU or **HACS** (Pre Nov 2026) in Home Assistant
+1. Open **MARKETPLACE** which is under the **SYSTEM MENU** or **HACS** (Pre Nov 2026) in Home Assistant
 2. Go to **Integrations**
 3. Search for **Advanced Group Sensor**
 4. Click **Download**
