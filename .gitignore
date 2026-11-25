@@ -25,3 +25,5 @@ www/community/
 *.bak
 *.tmp
 *.swp
+# Local AI assistant notes
+CLAUDE.md
