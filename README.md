@@ -226,6 +226,102 @@ The integration stores the done dates itself. No helpers, no template YAML. Pres
 
 Birthday tip: make two yearly tasks with the same date. `Send Mom a Card` with 7 lead days, and `Call Mom` with 0. Each clears on its own Done and both come back next year.
 
+#### Task cards — press and hold to mark Done
+
+Both examples need [button-card](https://github.com/custom-cards/button-card). The card turns red while the task is alerting (this follows lead days and the alert time), shows the days left, and a **press and hold** presses the task's Done button. Tap does nothing, so a stray tap won't reset anything.
+
+**Single task.** Replace `call_mom` with your task's name as it appears in its entity IDs (`sensor.<task>_days_remaining` and `button.<task>_done`), and pick a name and icon.
+
+```yaml
+type: custom:button-card
+entity: sensor.call_mom_days_remaining
+name: CALL MOM
+icon: mdi:phone-heart
+show_state: true
+state_display: >
+  [[[ const d = Number(entity.state);
+      return d < 0 ? `${-d} days late` : d === 0 ? "Due today" : `${d} days remaining`; ]]]
+tap_action:
+  action: none
+hold_action:
+  action: perform-action
+  perform_action: button.press
+  target:
+    entity_id: button.call_mom_done
+styles:
+  card:
+    - background: >
+        [[[ return entity.attributes.alerting
+          ? "linear-gradient(90deg, #BE1717 0%, #9B1010 12%, #881010 40%, #840F0F 60%, #9F1111 88%, #C41414 100%)"
+          : "linear-gradient(180deg, #293A48, #15232F)"; ]]]
+    - border-radius: 12px
+    - box-shadow: >
+        [[[ return entity.attributes.alerting
+          ? "0 3px 6px 0 rgba(0,0,0,0.60), inset 3px 0 4px -2px rgba(255,165,165,0.70), inset 0 3px 4px -1px rgba(255,175,175,0.75)"
+          : "0 0 8px 1px rgba(0,0,0,0.75), inset 0 0 0 1px rgba(110,150,180,0.30), inset 0 2px 0 rgba(150,190,220,0.30)"; ]]]
+    - padding: 15px
+  name:
+    - font-weight: bold
+    - color: '#B8C7D3'
+  icon:
+    - color: '[[[ return entity.attributes.alerting ? "#FFFFFF" : "#40CF8A"; ]]]'
+  state:
+    - color: '#CCCCCC'
+```
+
+**All tasks.** Also needs [auto-entities](https://github.com/thomasloven/lovelace-auto-entities). It finds every task's days-remaining sensor on its own, so new tasks appear and deleted tasks disappear without editing the card. Soonest due date first. The hold action works out each task's Done button from its sensor ID.
+
+```yaml
+type: custom:auto-entities
+card:
+  type: grid
+  columns: 2
+  square: false
+card_param: cards
+filter:
+  include:
+    - integration: advanced_group_sensor
+      entity_id: sensor.*_days_remaining
+      options:
+        type: custom:button-card
+        show_state: true
+        state_display: >
+          [[[ const d = Number(entity.state);
+              return d < 0 ? `${-d} days late` : d === 0 ? "Due today" : `${d} days remaining`; ]]]
+        tap_action:
+          action: none
+        hold_action:
+          action: perform-action
+          perform_action: button.press
+          data:
+            entity_id: >
+              [[[ return entity.entity_id.replace("sensor.", "button.").replace("_days_remaining", "_done"); ]]]
+        styles:
+          card:
+            - background: >
+                [[[ return entity.attributes.alerting
+                  ? "linear-gradient(90deg, #BE1717 0%, #881010 40%, #840F0F 60%, #C41414 100%)"
+                  : "linear-gradient(180deg, #293A48, #15232F)"; ]]]
+            - border-radius: 12px
+            - padding: 15px
+          name:
+            - font-weight: bold
+            - color: '#B8C7D3'
+          state:
+            - color: '#CCCCCC'
+sort:
+  method: attribute
+  attribute: due_date
+show_empty: false
+```
+
+To show **only** tasks that are due or overdue, add these two lines under `entity_id: sensor.*_days_remaining`:
+
+```yaml
+      attributes:
+        alerting: true
+```
+
 ---
 
 ### Overview Tab
